@@ -77,7 +77,7 @@ export function ArticleSearch({ onSearchChange, onTagsChange, searchQuery, selec
               <CommandList>
                 <CommandEmpty>{tagsLoading ? "読み込み中..." : "タグが見つかりません"}</CommandEmpty>
                 <CommandGroup>
-                  {tags.map((tag) => (
+                  {tags?.map((tag) => (
                     <CommandItem
                       key={tag.id}
                       onSelect={() => handleTagSelect(tag.name)}

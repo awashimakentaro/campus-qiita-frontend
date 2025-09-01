@@ -116,7 +116,7 @@ export function ArticleFeed() {
           {/* Articles List */}
           {!loading || page > 1 ? (
             <div className="space-y-6">
-              {articles.length === 0 && !loading ? (
+              {(!articles || articles.length === 0) && !loading ? (
                 <div className="text-center py-12">
                   <p className="text-muted-foreground">
                     {searchQuery || selectedTags.length > 0
@@ -126,7 +126,7 @@ export function ArticleFeed() {
                 </div>
               ) : (
                 <>
-                  {articles.map((article) => (
+                  {articles?.map((article) => (
                     <ArticleCard key={article.id} article={article} />
                   ))}
 
