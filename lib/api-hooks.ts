@@ -68,7 +68,7 @@ export function useArticles(filters?: ArticleFilters) {
     setError(null)
 
     try {
-      const response = await apiClient.get<PaginatedResponse<Article>>("/v1/articles", filters)
+      const response = await apiClient.get<PaginatedResponse<Article>>("/v1/articles/", filters)
       setArticles(response.data)
       setPagination(response.pagination)
     } catch (err) {
@@ -121,7 +121,7 @@ export function useCreateArticle() {
   return useCallback(
     async (data: CreateArticleRequest): Promise<Article> => {
       try {
-        const article = await apiClient.post<Article>("/v1/articles", data)
+        const article = await apiClient.post<Article>("/v1/articles/", data)
 
         toast({
           title: "成功",
@@ -211,7 +211,7 @@ export function useTags(filters?: TagFilters) {
     setError(null)
 
     try {
-      const response = await apiClient.get<PaginatedResponse<Tag>>("/v1/tags", filters)
+      const response = await apiClient.get<PaginatedResponse<Tag>>("/v1/tags/", filters)
       setTags(response.data)
     } catch (err) {
       const apiError = err instanceof ApiError ? err : new ApiError("Failed to fetch tags", 0)
@@ -234,7 +234,7 @@ export function useCreateTag() {
   return useCallback(
     async (data: CreateTagRequest): Promise<Tag> => {
       try {
-        const tag = await apiClient.post<Tag>("/v1/tags", data)
+        const tag = await apiClient.post<Tag>("/v1/tags/", data)
 
         toast({
           title: "成功",

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import {
@@ -37,23 +37,30 @@ export function ArticleActions({ article }: ArticleActionsProps) {
   const updateArticle = useUpdateArticle()
   const deleteArticle = useDeleteArticle()
 
-  // Only show actions if user is the author
-  if (!user || user.id !== article.author.id) {
-    return null
-  }
+  // ----- 安全ガード：author が無い/型がズレても落ちない -----
+  const isOwner = useMemo(() => {
+    if (!user) return false
+    if (!article || !article.author) return false
+    // id が number / string 混在の可能性に対応
+    return String(user.id) === String(article.author.id)
+  }, [user, article])
+
+  // オーナー以外はアクション非表示
+  if (!isOwner) return null
 
   const handleEdit = () => {
     router.push(`/articles/${article.id}/edit`)
   }
 
   const handleTogglePublish = async () => {
+    if (isToggling) return
     setIsToggling(true)
     try {
-      await updateArticle(article.id, {
+      await updateArticle(String(article.id), {
         is_published: !article.is_published,
       })
-      // Refresh the page to show updated status
-      window.location.reload()
+      // Next.js 的に優しい再取得
+      router.refresh()
     } catch (error) {
       console.error("Failed to toggle publish status:", error)
     } finally {
@@ -62,10 +69,12 @@ export function ArticleActions({ article }: ArticleActionsProps) {
   }
 
   const handleDelete = async () => {
+    if (isDeleting) return
     setIsDeleting(true)
     try {
-      await deleteArticle(article.id)
+      await deleteArticle(String(article.id))
       router.push("/")
+      router.refresh()
     } catch (error) {
       console.error("Failed to delete article:", error)
     } finally {
@@ -75,29 +84,39 @@ export function ArticleActions({ article }: ArticleActionsProps) {
 
   return (
     <div className="flex items-center space-x-2">
-      <Button variant="outline" size="sm" onClick={handleEdit}>
+      <Button variant="outline" size="sm" onClick={handleEdit} disabled={isDeleting || isToggling}>
         <Edit className="h-4 w-4 mr-2" />
         編集
       </Button>
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="sm">
-            <MoreHorizontal className="h-4 w-4" />
+          <Button variant="ghost" size="sm" disabled={isDeleting}>
+            {isToggling ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreHorizontal className="h-4 w-4" />}
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuItem onClick={handleTogglePublish} disabled={isToggling}>
             {isToggling ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                更新中...
+              </>
             ) : article.is_published ? (
-              <EyeOff className="h-4 w-4 mr-2" />
+              <>
+                <EyeOff className="h-4 w-4 mr-2" />
+                下書きに戻す
+              </>
             ) : (
-              <Eye className="h-4 w-4 mr-2" />
+              <>
+                <Eye className="h-4 w-4 mr-2" />
+                公開する
+              </>
             )}
-            {article.is_published ? "下書きに戻す" : "公開する"}
           </DropdownMenuItem>
+
           <DropdownMenuSeparator />
+
           <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
             <DialogTrigger asChild>
               <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-destructive">
@@ -108,10 +127,12 @@ export function ArticleActions({ article }: ArticleActionsProps) {
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>記事を削除</DialogTitle>
-                <DialogDescription>「{article.title}」を削除しますか？この操作は取り消せません。</DialogDescription>
               </DialogHeader>
-              <div className="flex justify-end space-x-2">
-                <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>
+              <DialogDescription className="mb-4">
+                「{article.title}」を削除しますか？この操作は取り消せません。
+              </DialogDescription>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)} disabled={isDeleting}>
                   キャンセル
                 </Button>
                 <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
