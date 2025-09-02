@@ -1,5 +1,5 @@
 "use client"
-
+//成功
 import { useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -30,7 +30,7 @@ export default function AuthCallbackPage() {
 
       if (!code) {
         setStatus("error")
-        setMessage("認証コードが見つかりません。")
+        setMessage("認証コードが見つかりません。") 
         return
       }
 
