@@ -1,102 +1,193 @@
-// components/tag-selector.tsx
 "use client"
 
-import { useState, useMemo } from "react"
-import { Input } from "@/components/ui/input"
+import { useState, useCallback, useMemo } from "react"
+import { X, Plus, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { X } from "lucide-react"
-import { useTags } from "@/lib/api-hooks"
+import { Badge } from "@/components/ui/badge"
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { useTags, useCreateTag } from "@/lib/api-hooks"
+import { debounce } from "@/lib/utils"
 import type { Tag } from "@/lib/api-types"
 
-type Props = {
-  selectedTags?: Tag[]               // ← optional
-  onTagsChange?: (tags: Tag[]) => void // ← optional
+type TagSelectorProps = {
+  selectedTags?: Tag[]                       // ← optional（安全化）
+  onTagsChange?: (tags: Tag[]) => void       // ← optional（安全化）
   maxTags?: number
-  placeholder?: string
 }
 
 export function TagSelector({
-  selectedTags = [],                 // ← デフォルト空配列
-  onTagsChange = () => {},           // ← デフォルト no-op
+  selectedTags = [],                          // ← 既定は空配列
+  onTagsChange = () => {},                    // ← 既定は no-op
   maxTags = 10,
-  placeholder = "タグ名で検索または作成してEnter",
-}: Props) {
+}: TagSelectorProps) {
   const [query, setQuery] = useState("")
-  const { tags: candidates } = useTags(query ? { query, limit: 10 } : undefined)
+  const [isOpen, setIsOpen] = useState(false)
+  const [isCreating, setIsCreating] = useState(false)
 
-  const canAddMore = selectedTags.length < maxTags
+  // 入力は即座に state に反映しつつ、API検索はデバウンス
+  const [searchQuery, setSearchQuery] = useState("")
+  const debouncedSearch = useCallback(
+    debounce((q: string) => setSearchQuery(q), 250),
+    []
+  )
+  const handleInputChange = (val: string) => {
+    setQuery(val)
+    debouncedSearch(val)
+  }
+
+  const { tags = [], loading } = useTags(
+    searchQuery ? { query: searchQuery, limit: 20 } : undefined
+  )
+
+  const createTag = useCreateTag()
+
+  const lower = (s: string) => s.trim().toLowerCase()
+  const hasCapacity = selectedTags.length < maxTags
+
+  // 既に選択済みを除いた候補
+  const availableTags = useMemo(() => {
+    const selectedSet = new Set(selectedTags.map((t) => t.id))
+    return (tags || []).filter((t) => !selectedSet.has(t.id))
+  }, [tags, selectedTags])
+
+  // 既存タグにも選択タグにも存在しない完全新規なら作成可能
+  const canCreateNew = useMemo(() => {
+    const q = lower(query)
+    if (!q) return false
+    const existsInFetched = (tags || []).some((t) => lower(t.name) === q)
+    const existsInSelected = selectedTags.some((t) => lower(t.name) === q)
+    return !existsInFetched && !existsInSelected
+  }, [query, tags, selectedTags])
 
   const addTag = (tag: Tag) => {
-    if (!canAddMore) return
+    if (!hasCapacity) return
     if (selectedTags.some((t) => t.id === tag.id)) return
     onTagsChange([...selectedTags, tag])
-    setQuery("")
   }
 
   const removeTag = (id: string) => {
-    onTagsChange(selectedTags.filter((t) => t.id === id)) // ← selectedTagsは必ず配列
+    onTagsChange(selectedTags.filter((t) => t.id !== id))
   }
 
-  const filteredCandidates = useMemo(() => {
-    const lower = query.trim().toLowerCase()
-    if (!lower) return candidates ?? []
-    return (candidates ?? []).filter((t) => t.name.toLowerCase().includes(lower))
-  }, [candidates, query])
+  const handleSelectExisting = (tag: Tag) => {
+    addTag(tag)
+    setIsOpen(false)
+    setQuery("")
+    setSearchQuery("")
+  }
+
+  const handleCreateNew = async (name: string) => {
+    const n = name.trim()
+    if (!n || !hasCapacity || isCreating) return
+    setIsCreating(true)
+    try {
+      const newTag = await createTag({ name: n })
+      addTag(newTag)
+      setIsOpen(false)
+      setQuery("")
+      setSearchQuery("")
+    } catch (e) {
+      console.error("Failed to create tag:", e)
+    } finally {
+      setIsCreating(false)
+    }
+  }
+
+  // Enter / カンマ(,)での追加にも対応
+  const handleKeyDown: React.KeyboardEventHandler<HTMLInputElement> = (e) => {
+    if (!hasCapacity) return
+    if (e.key === "Enter" || e.key === "," ) {
+      e.preventDefault()
+      const n = query.trim()
+      if (!n) return
+      // 既存候補に完全一致があればそれを選択、なければ新規作成
+      const exact = (tags || []).find((t) => lower(t.name) === lower(n))
+      if (exact) {
+        handleSelectExisting(exact)
+      } else if (canCreateNew) {
+        void handleCreateNew(n)
+      }
+    }
+  }
 
   return (
-    <div className="space-y-2">
-      {/* 入力 */}
-      <Input
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder={placeholder}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault()
-            const name = query.trim()
-            if (!name || !canAddMore) return
-            // 仮タグ（idは一時的にnameを使う or BE作成後に差し替え）
-            const temp: Tag = { id: name, name, createdAt: "", updatedAt: "" }
-            addTag(temp)
-          }
-        }}
-      />
-
-      {/* 選択済みタグ */}
+    <div className="space-y-3">
+      {/* 選択済み */}
       {selectedTags.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {selectedTags.map((t) => (
-            <span key={t.id} className="inline-flex items-center gap-1 rounded-full bg-muted px-3 py-1 text-sm">
+            <Badge key={t.id} variant="secondary" className="gap-1">
               {t.name}
-              <button
-                type="button"
-                className="ml-1 text-muted-foreground hover:text-foreground"
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-auto p-0 text-muted-foreground hover:text-foreground"
                 onClick={() => removeTag(t.id)}
-                aria-label={`${t.name} を削除`}
+                aria-label={`${t.name} を外す`}
               >
-                <X className="h-4 w-4" />
-              </button>
-            </span>
+                <X className="h-3 w-3" />
+              </Button>
+            </Badge>
           ))}
         </div>
       )}
 
-      {/* 候補表示（任意） */}
-      {filteredCandidates.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {filteredCandidates.slice(0, 10).map((t) => (
-            <Button
-              key={t.id}
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => addTag(t)}
-              disabled={!canAddMore}
-            >
-              + {t.name}
+      {/* セレクタ */}
+      {hasCapacity ? (
+        <Popover open={isOpen} onOpenChange={setIsOpen}>
+          <PopoverTrigger asChild>
+            <Button variant="outline" className="justify-start bg-transparent">
+              <Plus className="h-4 w-4 mr-2" />
+              タグを追加 ({selectedTags.length}/{maxTags})
             </Button>
-          ))}
-        </div>
+          </PopoverTrigger>
+          <PopoverContent className="w-80 p-0" align="start">
+            <Command>
+              <CommandInput
+                value={query}
+                onValueChange={handleInputChange}
+                onKeyDown={handleKeyDown}
+                placeholder="タグを検索または作成..."
+              />
+              <CommandList>
+                <CommandEmpty>{loading ? "検索中..." : "タグが見つかりません"}</CommandEmpty>
+
+                {/* 既存タグ候補 */}
+                {availableTags.length > 0 && (
+                  <CommandGroup heading="既存のタグ">
+                    {availableTags.map((t) => (
+                      <CommandItem key={t.id} onSelect={() => handleSelectExisting(t)}>
+                        <Check className="mr-2 h-4 w-4 opacity-0" />
+                        {t.name}
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                )}
+
+                {/* 新規作成 */}
+                {canCreateNew && (
+                  <CommandGroup heading="新しいタグ">
+                    <CommandItem onSelect={() => handleCreateNew(query)} disabled={isCreating}>
+                      <Plus className="mr-2 h-4 w-4" />
+                      「{query}」を作成
+                      {isCreating && <span className="ml-auto text-xs">作成中...</span>}
+                    </CommandItem>
+                  </CommandGroup>
+                )}
+              </CommandList>
+            </Command>
+          </PopoverContent>
+        </Popover>
+      ) : (
+        <p className="text-sm text-muted-foreground">最大{maxTags}個のタグまで選択できます</p>
       )}
     </div>
   )
