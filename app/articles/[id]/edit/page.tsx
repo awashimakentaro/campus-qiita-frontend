@@ -13,10 +13,11 @@ import Link from "next/link"
 
 export default function EditArticlePage() {
   const params = useParams()
-  const articleId = params.id as string
+  const articleId = String(params.id ?? "")
   const { user } = useAuth()
   const { article, loading, error } = useArticle(articleId)
 
+  // ローディング表示
   if (loading) {
     return (
       <AuthGuard>
@@ -31,6 +32,7 @@ export default function EditArticlePage() {
     )
   }
 
+  // エラー or 記事なし
   if (error || !article) {
     return (
       <AuthGuard>
@@ -53,8 +55,11 @@ export default function EditArticlePage() {
     )
   }
 
-  // Check if user is the author
-  if (user?.id !== article.author.id) {
+  // 安全なオーナー判定（authorが未定義でも落ちない／型差を吸収）
+  const isOwner =
+    !!user && !!article.author && String(user.id) === String(article.author.id)
+
+  if (!isOwner) {
     return (
       <AuthGuard>
         <div className="container mx-auto px-4 py-8 max-w-4xl">

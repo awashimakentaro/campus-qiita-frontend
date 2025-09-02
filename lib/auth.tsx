@@ -1,8 +1,8 @@
 "use client"
 
 import type React from "react"
-
 import { createContext, useContext, useEffect, useState } from "react"
+import { apiClient } from "@/lib/api-client"
 
 interface User {
   id: string
@@ -27,18 +27,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refreshUser = async () => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE}/auth/me`, {
-        credentials: "include",
-      })
-
-      if (response.ok) {
-        const userData = await response.json()
-        setUser(userData)
-      } else {
-        setUser(null)
-      }
-    } catch (error) {
-      console.error("Failed to fetch user:", error)
+      // apiClient経由に変更（BASE/CORS/credentialsは内部で統一）
+      const me = await apiClient.get<User>("/auth/me")
+      setUser(me)
+    } catch {
       setUser(null)
     } finally {
       setLoading(false)
@@ -46,34 +38,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const login = () => {
-    window.location.href = "/login"
+    // BEの /auth/login に直接リダイレクト（現在URLを戻り先に）
+    const base = (process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000").replace(/\/+$/, "")
+    const redirect = typeof window !== "undefined" ? window.location.href : "/"
+    window.location.href = `${base}/auth/login?redirect=${encodeURIComponent(redirect)}`
   }
 
   const logout = async () => {
     try {
-      await fetch(`${process.env.NEXT_PUBLIC_API_BASE}/auth/logout`, {
-        method: "POST",
-        credentials: "include",
-      })
-    } catch (error) {
-      console.error("Logout error:", error)
+      // まだBEに /auth/logout が無いならこの呼び出しは失敗してもOK
+      await apiClient.post("/auth/logout")
+    } catch {
+      // noop
     } finally {
       setUser(null)
-      window.location.href = "/login"
+      // ログインへ（BEのログインに飛ばすほうが確実）
+      login()
     }
   }
 
   useEffect(() => {
     refreshUser()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  return <AuthContext.Provider value={{ user, loading, login, logout, refreshUser }}>{children}</AuthContext.Provider>
+  return (
+    <AuthContext.Provider value={{ user, loading, login, logout, refreshUser }}>
+      {children}
+    </AuthContext.Provider>
+  )
 }
 
 export function useAuth() {
-  const context = useContext(AuthContext)
-  if (context === undefined) {
-    throw new Error("useAuth must be used within an AuthProvider")
-  }
-  return context
+  const ctx = useContext(AuthContext)
+  if (!ctx) throw new Error("useAuth must be used within an AuthProvider")
+  return ctx
 }
