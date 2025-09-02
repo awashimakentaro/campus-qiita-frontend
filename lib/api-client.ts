@@ -36,48 +36,55 @@ class ApiClient {
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`
-
+  
     const config: RequestInit = {
-      credentials: "include", // Include cookies for authentication
+      credentials: "include",
       headers: {
         "Content-Type": "application/json",
         ...options.headers,
       },
       ...options,
     }
-
+  
     try {
       const response = await fetch(url, config)
-
+  
       if (!response.ok) {
         let errorMessage = `HTTP ${response.status}`
         let errorCode: string | undefined
-
+  
         try {
           const errorData = await response.json()
           errorMessage = errorData.message || errorData.error || errorMessage
           errorCode = errorData.code
         } catch {
-          // If response is not JSON, use status text
           errorMessage = response.statusText || errorMessage
         }
-
+  
         throw new ApiError(errorMessage, response.status, errorCode)
       }
-
-      // Handle empty responses
-      const contentType = response.headers.get("content-type")
-      if (!contentType?.includes("application/json")) {
+  
+      // ✅ 204 No Content は即 return
+      if (response.status === 204) {
         return {} as T
       }
-
-      return await response.json()
+  
+      // ✅ 空ボディ安全：テキストで読んで中身があれば JSON に
+      const contentType = response.headers.get("content-type") || ""
+      const text = await response.text()
+      if (!text) {
+        return {} as T
+      }
+      if (contentType.includes("application/json")) {
+        return JSON.parse(text) as T
+      }
+  
+      // JSON以外は空オブジェクト返す（用途に応じて拡張可）
+      return {} as T
     } catch (error) {
       if (error instanceof ApiError) {
         throw error
       }
-
-      // Network or other errors
       throw new ApiError(error instanceof Error ? error.message : "Network error occurred", 0)
     }
   }

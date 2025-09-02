@@ -1,8 +1,7 @@
 "use client"
 
 import type React from "react"
-
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -29,7 +28,7 @@ function CommentItem({ comment }: { comment: Comment }) {
           <span className="font-medium text-sm">{comment.author.name}</span>
           <span className="text-xs text-muted-foreground">{formatRelativeTime(comment.createdAt)}</span>
         </div>
-        <p className="text-sm leading-relaxed">{comment.body}</p>
+        <p className="text-sm leading-relaxed whitespace-pre-wrap">{comment.body}</p>
       </div>
     </div>
   )
@@ -40,20 +39,75 @@ export function CommentSection({ articleId }: CommentSectionProps) {
   const [newComment, setNewComment] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
 
+  // 既存APIから取得
   const { comments, loading, refetch } = useComments(articleId)
   const createComment = useCreateComment()
 
+  // 楽観的UI用のローカル配列（未送信/送信中を含む）
+  const [localComments, setLocalComments] = useState<Comment[] | null>(null)
+
+  // サーバー配列が更新されたら、ローカルが未設定のとき同期
+  useEffect(() => {
+    if (localComments === null && comments) {
+      setLocalComments(comments)
+    }
+  }, [comments, localComments])
+
+  // 表示に使う配列：ローカルがあればそれ、なければサーバ
+  const displayComments = useMemo(() => {
+    return (localComments ?? comments) ?? []
+  }, [localComments, comments])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!newComment.trim() || isSubmitting) return
+    const body = newComment.trim()
+    if (!body || isSubmitting) return
 
     setIsSubmitting(true)
+
+    // 楽観的コメント（仮ID）
+    const tempId = `tmp-${Date.now()}`
+    const optimistic: Comment = {
+      id: tempId,
+      body,
+      author: {
+        id: user?.id ?? "me",
+        name: user?.name ?? "あなた",
+        email: user?.email ?? "",
+        avatar: user?.avatar,
+        createdAt: "", // 型に入っていれば無視される
+        updatedAt: "",
+      } as any, // Author型が User と完全一致しないときの一時回避
+      article_id: String(articleId),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }
+
+    // 1) 即座に先頭へ反映
+    setLocalComments((prev) => [optimistic, ...((prev ?? comments) ?? [])])
+
     try {
-      await createComment(articleId, { body: newComment.trim() })
+      // 2) サーバへPOST
+      const saved = await createComment(articleId, { body })
+
+      // 3) 仮IDのレコードをサーバ応答で置き換え
+      setLocalComments((prev) => {
+        const base = (prev ?? [])
+        const idx = base.findIndex((c) => c.id === tempId)
+        if (idx === -1) return [saved, ...base]
+        const next = [...base]
+        next[idx] = saved
+        return next
+      })
+
+      // 入力クリア
       setNewComment("")
+      // 4) 念のため最新を裏取り（リスト整合性担保）
       refetch()
-    } catch (error) {
-      console.error("Failed to create comment:", error)
+    } catch (err) {
+      console.error("Failed to create comment:", err)
+      // 失敗時は楽観的反映をロールバック
+      setLocalComments((prev) => (prev ?? []).filter((c) => c.id !== tempId))
     } finally {
       setIsSubmitting(false)
     }
@@ -64,12 +118,12 @@ export function CommentSection({ articleId }: CommentSectionProps) {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <MessageCircle className="h-5 w-5" />
-          コメント ({comments.length})
+          コメント ({displayComments.length})
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
         {/* Comment Form */}
-        {user && (
+        {user ? (
           <form onSubmit={handleSubmit} className="space-y-3">
             <Textarea
               value={newComment}
@@ -90,9 +144,7 @@ export function CommentSection({ articleId }: CommentSectionProps) {
               </Button>
             </div>
           </form>
-        )}
-
-        {!user && (
+        ) : (
           <div className="text-center py-4 text-muted-foreground">
             <p>
               コメントを投稿するには
@@ -106,18 +158,18 @@ export function CommentSection({ articleId }: CommentSectionProps) {
 
         {/* Comments List */}
         <div className="space-y-0">
-          {loading ? (
+          {loading && displayComments.length === 0 ? (
             <div className="text-center py-4 text-muted-foreground">
               <p>コメントを読み込み中...</p>
             </div>
-          ) : comments.length === 0 ? (
+          ) : displayComments.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <MessageCircle className="h-12 w-12 mx-auto mb-3 opacity-50" />
               <p>まだコメントがありません</p>
               <p className="text-sm">最初のコメントを投稿してみませんか？</p>
             </div>
           ) : (
-            comments.map((comment) => <CommentItem key={comment.id} comment={comment} />)
+            displayComments.map((comment) => <CommentItem key={comment.id} comment={comment} />)
           )}
         </div>
       </CardContent>

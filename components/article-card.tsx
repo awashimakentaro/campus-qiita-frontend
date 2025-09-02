@@ -13,7 +13,26 @@ interface ArticleCardProps {
 }
 
 export function ArticleCard({ article }: ArticleCardProps) {
-  const excerpt = article.excerpt || extractExcerpt(article.body_md, 200)
+  // ✅ 欠損に強いフォールバック
+  const tags = Array.isArray((article as any).tags) ? (article as any).tags : []
+  const author =
+    (article as any).author ?? {
+      id: "",
+      name: "Unknown",
+      email: "",
+      avatar: null,
+      createdAt: "",
+      updatedAt: "",
+    }
+  const createdAt =
+    (article as any).createdAt ??
+    (article as any).created_at ?? // BE が snake_case の場合も考慮
+    ""
+  const likes = (article as any).likes_count ?? 0
+  const commentsCount = (article as any).comments_count ?? 0
+
+  const bodyMd = (article as any).body_md ?? (article as any).body ?? ""
+  const excerpt = (article as any).excerpt || extractExcerpt(String(bodyMd), 200)
 
   return (
     <Card className="hover:shadow-md transition-shadow">
@@ -30,12 +49,12 @@ export function ArticleCard({ article }: ArticleCardProps) {
         </div>
 
         {/* Tags */}
-        {article.tags.length > 0 && (
+        {tags.length > 0 && (
           <div className="flex flex-wrap gap-2 mt-3">
-            {article.tags.map((tag) => (
-              <Link key={tag.id} href={`/?tag=${encodeURIComponent(tag.name)}`}>
+            {tags.map((tag: any) => (
+              <Link key={String(tag.id)} href={`/?tag=${encodeURIComponent(tag.name ?? "")}`}>
                 <Badge variant="secondary" className="text-xs hover:bg-secondary/80 cursor-pointer">
-                  {tag.name}
+                  {tag.name ?? "tag"}
                 </Badge>
               </Link>
             ))}
@@ -48,15 +67,17 @@ export function ArticleCard({ article }: ArticleCardProps) {
           {/* Author Info */}
           <div className="flex items-center space-x-3">
             <Avatar className="h-6 w-6">
-              <AvatarImage src={article.author.avatar || "/placeholder.svg"} alt={article.author.name} />
-              <AvatarFallback className="text-xs">{article.author.name.charAt(0)}</AvatarFallback>
+              <AvatarImage src={author.avatar || "/placeholder.svg"} alt={author.name} />
+              <AvatarFallback className="text-xs">{String(author.name).charAt(0)}</AvatarFallback>
             </Avatar>
             <div className="flex items-center space-x-4 text-sm text-muted-foreground">
-              <span>{article.author.name}</span>
-              <div className="flex items-center space-x-1">
-                <Calendar className="h-4 w-4" />
-                <span>{formatRelativeTime(article.createdAt)}</span>
-              </div>
+              <span>{author.name}</span>
+              {createdAt && (
+                <div className="flex items-center space-x-1">
+                  <Calendar className="h-4 w-4" />
+                  <span>{formatRelativeTime(String(createdAt))}</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -64,11 +85,11 @@ export function ArticleCard({ article }: ArticleCardProps) {
           <div className="flex items-center space-x-4 text-sm text-muted-foreground">
             <div className="flex items-center space-x-1">
               <Heart className="h-4 w-4" />
-              <span>{article.likes_count}</span>
+              <span>{likes}</span>
             </div>
             <div className="flex items-center space-x-1">
               <MessageCircle className="h-4 w-4" />
-              <span>{article.comments_count}</span>
+              <span>{commentsCount}</span>
             </div>
           </div>
         </div>

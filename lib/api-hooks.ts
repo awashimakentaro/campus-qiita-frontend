@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback ,useMemo } from "react"
 import { apiClient, ApiError } from "./api-client"
 import type {
   Article,
@@ -56,63 +56,64 @@ export function useApiRequest<T>() {
   return { data, loading, error, execute }
 }
 
-// Articles API hooks
-export function useArticles(filters?: ArticleFilters) {
-  const [articles, setArticles] = useState<Article[]>([])
-  const [pagination, setPagination] = useState<PaginatedResponse<Article>["pagination"] | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<ApiError | null>(null)
+// ---- Articles API hooks（置き換え） ----
+// 先頭インポートに useMemo が入っていることを確認:
+// import { useState, useEffect, useMemo } from "react"
 
-  const fetchArticles = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-
-    try {
-      const response = await apiClient.get<PaginatedResponse<Article>>("/v1/articles/", filters)
-      setArticles(response.data)
-      setPagination(response.pagination)
-    } catch (err) {
-      const apiError = err instanceof ApiError ? err : new ApiError("Failed to fetch articles", 0)
-      setError(apiError)
-    } finally {
-      setLoading(false)
+function normalizeFilters(f?: ArticleFilters) {
+  if (!f) return {};
+  const out: Record<string, any> = {};
+  for (const [k, v] of Object.entries(f)) {
+    if (v === undefined || v === null) continue;         // undefined/null は落とす
+    if (typeof v === "string" && v.trim() === "") continue; // 空文字は落とす
+    if (Array.isArray(v)) {
+      if (v.length === 0) continue;                      // 空配列は落とす
+      out[k] = [...v].map(String).sort();                // 配列はソートして安定化
+    } else {
+      out[k] = v;
     }
-  }, [filters])
-
-  useEffect(() => {
-    fetchArticles()
-  }, [fetchArticles])
-
-  return { articles, pagination, loading, error, refetch: fetchArticles }
+  }
+  return out;
 }
 
-export function useArticle(id: string) {
-  const [article, setArticle] = useState<Article | null>(null)
+export function useArticles(filters?: ArticleFilters) {
+  const [articles, setArticles] = useState<Article[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<ApiError | null>(null)
 
-  const fetchArticle = useCallback(async () => {
-    if (!id) return
-
-    setLoading(true)
-    setError(null)
-
-    try {
-      const response = await apiClient.get<Article>(`/v1/articles/${id}`)
-      setArticle(response)
-    } catch (err) {
-      const apiError = err instanceof ApiError ? err : new ApiError("Failed to fetch article", 0)
-      setError(apiError)
-    } finally {
-      setLoading(false)
-    }
-  }, [id])
+  // ✅ フィルタを正規化してから、JSON で安定キー化
+  const normalized = useMemo(() => normalizeFilters(filters), [filters])
+  const queryKey = useMemo(() => JSON.stringify(normalized), [normalized])
 
   useEffect(() => {
-    fetchArticle()
-  }, [fetchArticle])
+    let cancelled = false
+    const fetchArticles = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const response = await apiClient.get<Article[]>("/v1/articles", normalized)
+        if (!cancelled) setArticles(Array.isArray(response) ? response : [])
+      } catch (err) {
+        if (!cancelled) {
+          const apiError = err instanceof ApiError ? err : new ApiError("Failed to fetch articles", 0)
+          setError(apiError)
+          setArticles([])
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    fetchArticles()
+    return () => {
+      cancelled = true
+    }
+  }, [queryKey]) // ← 正規化済みキーだけに依存
 
-  return { article, loading, error, refetch: fetchArticle }
+  return { articles, loading, error, refetch: async () => {
+    // 手動リフェッチ用（同じ normalized を使う）
+    const response = await apiClient.get<Article[]>("/v1/articles", normalized)
+    setArticles(Array.isArray(response) ? response : [])
+  }}
 }
 
 export function useCreateArticle() {
@@ -200,26 +201,30 @@ export function useDeleteArticle() {
   )
 }
 
-// Tags API hooks
+// Tags API hooks（置き換え）
 export function useTags(filters?: TagFilters) {
   const [tags, setTags] = useState<Tag[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<ApiError | null>(null)
 
+  // ✅ filters の安定キー（オブジェクトの新旧差で無限ループしない）
+  const queryKey = useMemo(() => JSON.stringify(filters ?? {}), [filters])
+
   const fetchTags = useCallback(async () => {
     setLoading(true)
     setError(null)
-
     try {
-      const response = await apiClient.get<PaginatedResponse<Tag>>("/v1/tags/", filters)
-      setTags(response.data)
+      // ✅ バックエンドは配列返却を想定
+      const response = await apiClient.get<Tag[]>("/v1/tags", filters)
+      setTags(Array.isArray(response) ? response : [])
     } catch (err) {
       const apiError = err instanceof ApiError ? err : new ApiError("Failed to fetch tags", 0)
       setError(apiError)
+      setTags([])
     } finally {
       setLoading(false)
     }
-  }, [filters])
+  }, [queryKey]) // ← filters ではなく安定キーに依存
 
   useEffect(() => {
     fetchTags()
@@ -227,7 +232,6 @@ export function useTags(filters?: TagFilters) {
 
   return { tags, loading, error, refetch: fetchTags }
 }
-
 export function useCreateTag() {
   const { toast } = useToast()
 
