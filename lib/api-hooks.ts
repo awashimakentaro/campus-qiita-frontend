@@ -12,9 +12,44 @@ import type {
   CreateCommentRequest,
   ArticleFilters,
   TagFilters,
-  PaginatedResponse,
 } from "./api-types"
 import { useToast } from "@/hooks/use-toast"
+
+export function useArticle(id?: string) {
+  const [article, setArticle] = useState<Article | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<ApiError | null>(null)
+
+  // id が変わるたびに取得（undefined のときは何もしない）
+  useEffect(() => {
+    if (!id) return
+
+    let cancelled = false
+    const fetchArticle = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const res = await apiClient.get<Article>(`/v1/articles/${id}`)
+        if (!cancelled) setArticle(res)
+      } catch (err) {
+        if (!cancelled) setError(err instanceof ApiError ? err : new ApiError("Failed to fetch article", 0))
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    fetchArticle()
+    return () => { cancelled = true }
+  }, [id])
+
+  // 明示的に再取得したいとき
+  const refetch = useCallback(async () => {
+    if (!id) return
+    const res = await apiClient.get<Article>(`/v1/articles/${id}`)
+    setArticle(res)
+  }, [id])
+
+  return { article, loading, error, refetch }
+}
 
 // Generic hook for API requests
 export function useApiRequest<T>() {
