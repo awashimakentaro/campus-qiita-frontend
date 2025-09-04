@@ -11,13 +11,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Edit, Trash2, Eye, EyeOff, MoreHorizontal, Loader2 } from "lucide-react"
 import { useUpdateArticle, useDeleteArticle } from "@/lib/api-hooks"
 import { useAuth } from "@/lib/auth"
@@ -37,6 +31,10 @@ export function ArticleActions({ article }: ArticleActionsProps) {
   const updateArticle = useUpdateArticle()
   const deleteArticle = useDeleteArticle()
 
+  // 既存の useState 群の下あたりに追加
+  const authorId = String(article?.author?.id ?? (article as any)?.author_id ?? "")
+  const userId   = String(user?.id ?? "")
+  const isOwner  = !!authorId && !!userId && authorId === userId
   // In production, this should check if user.id === article.author.id
   if (!user) {
     return null
@@ -74,6 +72,7 @@ export function ArticleActions({ article }: ArticleActionsProps) {
       console.error("Failed to delete article:", error)
     } finally {
       setIsDeleting(false)
+      setIsDeleteDialogOpen(false)
     }
   }
 
@@ -84,7 +83,43 @@ export function ArticleActions({ article }: ArticleActionsProps) {
         編集
       </Button>
 
-      {user && article.author && String(user.id) === String(article.author.id) && (
+    {isOwner && (
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-destructive hover:bg-destructive hover:text-destructive-foreground bg-transparent"
+          >
+            <Trash2 className="h-4 w-4 mr-2" />
+            削除
+          </Button>
+        </DialogTrigger>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>記事を削除</DialogTitle>
+            <DialogDescription>「{article.title}」を削除しますか？この操作は取り消せません。</DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end space-x-2">
+            <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>
+              キャンセル
+            </Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
+              {isDeleting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  削除中...
+                </>
+              ) : (
+                "削除する"
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+            )}
+
+      {isOwner && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="sm">
@@ -102,36 +137,6 @@ export function ArticleActions({ article }: ArticleActionsProps) {
               )}
               {article.is_published ? "下書きに戻す" : "公開する"}
             </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-              <DialogTrigger asChild>
-                <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-destructive">
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  削除
-                </DropdownMenuItem>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>記事を削除</DialogTitle>
-                  <DialogDescription>「{article.title}」を削除しますか？この操作は取り消せません。</DialogDescription>
-                </DialogHeader>
-                <div className="flex justify-end space-x-2">
-                  <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>
-                    キャンセル
-                  </Button>
-                  <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
-                    {isDeleting ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        削除中...
-                      </>
-                    ) : (
-                      "削除する"
-                    )}
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
           </DropdownMenuContent>
         </DropdownMenu>
       )}
