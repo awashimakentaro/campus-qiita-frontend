@@ -1,4 +1,5 @@
-// Type definitions for API responses
+// このファイルはバックエンドのapiレスポンスに対応するtsの方を定義するファイル
+//実際に API と通信するのは lib/api-client.ts ですが、その戻り値に型をつけて安全に扱うために api-types.ts が存在します。
 
 export interface User {
   id: string
@@ -19,6 +20,7 @@ export interface Tag {
 
 export interface Article {
   id: string
+  author_id: string | number
   title: string
   body_md: string
   body_html?: string

@@ -1,4 +1,5 @@
-// API client utilities for backend communication
+// ここは実際にapiとやりとりをするところ
+//実際にfetchを叩いてapi凸苦心をするクラス
 
 export interface ApiResponse<T = any> {
   data?: T

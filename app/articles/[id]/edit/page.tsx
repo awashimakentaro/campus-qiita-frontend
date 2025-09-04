@@ -11,6 +11,8 @@ import { Button } from "@/components/ui/button"
 import { ArrowLeft } from "lucide-react"
 import Link from "next/link"
 
+
+
 export default function EditArticlePage() {
   const params = useParams()
   const articleId = String(params.id ?? "")
@@ -56,9 +58,8 @@ export default function EditArticlePage() {
   }
 
   // 安全なオーナー判定（authorが未定義でも落ちない／型差を吸収）
-  const isOwner =
-    !!user && !!article.author && String(user.id) === String(article.author.id)
-
+  const isOwner = !!user && String(user.id) === String(article.author_id)
+  
   if (!isOwner) {
     return (
       <AuthGuard>

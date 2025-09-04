@@ -1,5 +1,5 @@
 "use client"
-
+//実際にapiclient.getのように呼び出してreact hookとしてフロントで扱えるようにする部分
 import { useState, useEffect, useCallback ,useMemo } from "react"
 import { apiClient, ApiError } from "./api-client"
 import type {
