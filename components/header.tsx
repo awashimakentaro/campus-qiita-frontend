@@ -1,6 +1,8 @@
+// components/header.tsx
 "use client"
 
 import Link from "next/link"
+import { useEffect, useState } from "react"
 import { PenSquare, User, LogOut, FileText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -15,6 +17,11 @@ import { useAuth } from "@/lib/auth"
 
 export function Header() {
   const { user, logout } = useAuth()
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -29,14 +36,16 @@ export function Header() {
 
         {/* Navigation */}
         <div className="flex items-center space-x-4">
+          {/* 投稿する：SSR とクライアントで不一致が出ないよう mounted を考慮 */}
           <Button asChild variant="default" size="sm">
-            <Link href={user ? "/articles/new" : "/login"}>
+            <Link href={mounted && user ? "/articles/new" : "/login"}>
               <PenSquare className="h-4 w-4 mr-2" />
               投稿する
             </Link>
           </Button>
 
-          {user && (
+          {/* マイ記事：マウント後にだけユーザー判定 */}
+          {mounted && user && (
             <Button asChild variant="default" size="sm">
               <Link href="/my" className="flex items-center">
                 <FileText className="h-4 w-4 mr-2" />
@@ -45,7 +54,8 @@ export function Header() {
             </Button>
           )}
 
-          {user ? (
+          {/* アバターメニュー or ログインボタン：マウント後にだけユーザー判定 */}
+          {mounted && user ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-8 w-8 rounded-full">
