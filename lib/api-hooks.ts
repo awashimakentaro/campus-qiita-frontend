@@ -381,3 +381,44 @@ export function useCreateComment() {
     [toast],
   )
 }
+
+// ---- My Articles（自分の記事一覧）----
+export function useMyArticles(is_published?: boolean) {
+  const [articles, setArticles] = useState<Article[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<ApiError | null>(null)
+
+  // パラメータを安定化（依存配列で無限ループしない）
+  const queryKey = useMemo(() => JSON.stringify({ is_published }), [is_published])
+
+  useEffect(() => {
+    let cancelled = false
+    const fetchMy = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const params = typeof is_published === "boolean" ? { is_published } : undefined
+        const res = await apiClient.get<Article[]>("/v1/articles/me", params)
+        if (!cancelled) setArticles(Array.isArray(res) ? res : [])
+      } catch (err) {
+        if (!cancelled) {
+          const apiError = err instanceof ApiError ? err : new ApiError("Failed to fetch my articles", 0)
+          setError(apiError)
+          setArticles([])
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    fetchMy()
+    return () => { cancelled = true }
+  }, [queryKey])
+
+  const refetch = useCallback(async () => {
+    const params = typeof is_published === "boolean" ? { is_published } : undefined
+    const res = await apiClient.get<Article[]>("/v1/articles/me", params)
+    setArticles(Array.isArray(res) ? res : [])
+  }, [queryKey])
+
+  return { articles, loading, error, refetch }
+}
