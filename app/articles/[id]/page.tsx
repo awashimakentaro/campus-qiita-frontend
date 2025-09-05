@@ -140,8 +140,7 @@ export default function ArticlePage() {
         <Separator className="my-8" />
 
         {/* Comments Section */}
-        <CommentSection articleId={article.id} />
-      </main>
+        <CommentSection articleId={String(article.id)} />      </main>
     </div>
   )
 }

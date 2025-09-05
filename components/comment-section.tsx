@@ -44,19 +44,14 @@ export function CommentSection({ articleId }: CommentSectionProps) {
   const createComment = useCreateComment()
 
   // 楽観的UI用のローカル配列（未送信/送信中を含む）
-  const [localComments, setLocalComments] = useState<Comment[] | null>(null)
+ // 楽観的UI用の「保留」コメントだけを持つ
+const [pendingComments, setPendingComments] = useState<Comment[]>([])
 
-  // サーバー配列が更新されたら、ローカルが未設定のとき同期
-  useEffect(() => {
-    if (localComments === null && comments) {
-      setLocalComments(comments)
-    }
-  }, [comments, localComments])
-
-  // 表示に使う配列：ローカルがあればそれ、なければサーバ
-  const displayComments = useMemo(() => {
-    return (localComments ?? comments) ?? []
-  }, [localComments, comments])
+// 表示は「保留」 + 「サーバー」
+// ※ サーバー更新が来れば自動で反映される（同期用 useEffect は不要）
+const displayComments = useMemo(() => {
+  return [...pendingComments, ...(comments ?? [])]
+}, [pendingComments, comments])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -84,30 +79,20 @@ export function CommentSection({ articleId }: CommentSectionProps) {
     }
 
     // 1) 即座に先頭へ反映
-    setLocalComments((prev) => [optimistic, ...((prev ?? comments) ?? [])])
+    setPendingComments((prev) => [optimistic, ...prev])
 
     try {
-      // 2) サーバへPOST
       const saved = await createComment(articleId, { body })
-
-      // 3) 仮IDのレコードをサーバ応答で置き換え
-      setLocalComments((prev) => {
-        const base = (prev ?? [])
-        const idx = base.findIndex((c) => c.id === tempId)
-        if (idx === -1) return [saved, ...base]
-        const next = [...base]
-        next[idx] = saved
-        return next
-      })
-
-      // 入力クリア
+    
+      // 3) pending から仮IDを除去（サーバ配列に本物が入る想定）
+      setPendingComments((prev) => prev.filter((c) => c.id !== tempId))
+    
       setNewComment("")
-      // 4) 念のため最新を裏取り（リスト整合性担保）
       refetch()
     } catch (err) {
       console.error("Failed to create comment:", err)
-      // 失敗時は楽観的反映をロールバック
-      setLocalComments((prev) => (prev ?? []).filter((c) => c.id !== tempId))
+      // 失敗時は pending をロールバック
+      setPendingComments((prev) => prev.filter((c) => c.id !== tempId))
     } finally {
       setIsSubmitting(false)
     }
