@@ -115,11 +115,7 @@ export default function ArticlePage() {
             <CardContent className="py-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-4">
-                  <LikeButton
-                    articleId={article.id}
-                    initialCount={article.likes_count ?? 0}
-                    disabled={true} // Day8で有効化予定
-                  />
+                  <LikeButton articleId={article.id} initialCount={article.likes_count ?? 0} />
                 </div>
                 <ReportDialog articleId={article.id} articleTitle={article.title} />
               </div>

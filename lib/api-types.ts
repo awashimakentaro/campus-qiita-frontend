@@ -79,3 +79,9 @@ export interface TagFilters {
   page?: number
   limit?: number
 }
+
+// いいねAPIの共通レスポンス
+export interface LikeResponse {
+  liked: boolean
+  likes_count: number
+}

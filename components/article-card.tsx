@@ -7,6 +7,9 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Heart, MessageCircle, Calendar } from "lucide-react"
 import { formatRelativeTime, extractExcerpt } from "@/lib/utils"
 import type { Article } from "@/lib/api-types"
+import { useState, useEffect } from "react"  
+import { apiClient } from "@/lib/api-client"   
+
 
 interface ArticleCardProps {
   article: Article
@@ -28,11 +31,49 @@ export function ArticleCard({ article }: ArticleCardProps) {
     (article as any).createdAt ??
     (article as any).created_at ?? // BE が snake_case の場合も考慮
     ""
-  const likes = (article as any).likes_count ?? 0
-  const commentsCount = (article as any).comments_count ?? 0
+  const likes = (article as any).likes_count ?? 0 
 
   const bodyMd = (article as any).body_md ?? (article as any).body ?? ""
   const excerpt = (article as any).excerpt || extractExcerpt(String(bodyMd), 200)
+
+   const [likeCount, setLikeCount] = useState<number>((article as any).likes_count ?? 0)
+  useEffect(() => {
+    let cancelled = false
+    const fetchLikes = async () => {
+      try {
+        const res = await apiClient.get<{ liked: boolean; likes_count: number }>(
+          `/v1/articles/${String((article as any).id)}/likes`,
+        )
+        if (!cancelled && res && typeof res.likes_count === "number") {
+          setLikeCount(res.likes_count)
+        }
+      } catch {
+        // サイレント失敗（一覧カードなのでトーストは出さない）
+      }
+    }
+    fetchLikes()
+    return () => {
+      cancelled = true
+    }
+  }, [article])
+
+  const [commentsCount, setCommentsCount] = useState<number>((article as any).comments_count ?? 0)
+  
+  useEffect(() => {
+  let cancelled = false
+  const fetchCommentsCount = async () => {
+    try {
+      const res = await apiClient.get<any[]>(`/v1/articles/${String((article as any).id)}/comments`)
+      if (!cancelled && Array.isArray(res)) {
+        setCommentsCount(res.length)
+      }
+    } catch {
+      // サイレント失敗（一覧カードなのでトーストは出さない）
+    }
+  }
+  fetchCommentsCount()
+  return () => { cancelled = true }
+}, [article])
 
   return (
     <Card className="hover:shadow-md transition-shadow">
@@ -85,7 +126,7 @@ export function ArticleCard({ article }: ArticleCardProps) {
           <div className="flex items-center space-x-4 text-sm text-muted-foreground">
             <div className="flex items-center space-x-1">
               <Heart className="h-4 w-4" />
-              <span>{likes}</span>
+              <span>{likeCount}</span>
             </div>
             <div className="flex items-center space-x-1">
               <MessageCircle className="h-4 w-4" />

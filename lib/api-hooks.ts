@@ -12,6 +12,7 @@ import type {
   CreateCommentRequest,
   ArticleFilters,
   TagFilters,
+  LikeResponse,
 } from "./api-types"
 import { useToast } from "@/hooks/use-toast"
 
@@ -444,4 +445,73 @@ export function useMyArticles(is_published?: boolean) {
   }, [queryKey])
 
   return { articles, loading, error, refetch }
+}
+
+// ---- Likes API hooks ----
+export function useLike(articleId: string) {
+  const [state, setState] = useState<LikeResponse | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<ApiError | null>(null)
+  const { toast } = useToast()
+// 初回取得
+  useEffect(() => {
+    if (!articleId) return
+    let cancelled = false
+    const fetchLike = async () => {
+      setLoading(true)
+      try {
+        const res = await apiClient.get<LikeResponse>(`/v1/articles/${articleId}/likes`)
+        if (!cancelled) setState(res)
+      } catch (err) {
+        if (!cancelled) {
+          const apiError = err instanceof ApiError ? err : new ApiError("Failed to fetch like", 0)
+          setError(apiError)
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    fetchLike()
+    return () => {
+      cancelled = true
+    }
+  }, [articleId])
+
+  // いいね
+  const like = useCallback(async () => {
+    try {
+      const res = await apiClient.post<LikeResponse>(`/v1/articles/${articleId}/likes`, {})
+      setState(res)
+      return res
+    } catch (err) {
+      const apiError = err instanceof ApiError ? err : new ApiError("Failed to like", 0)
+      setError(apiError)
+      toast({
+        title: "エラー",
+        description: apiError.message,
+        variant: "destructive",
+      })
+      throw apiError
+    }
+  }, [articleId, toast])
+
+  // いいね解除
+  const unlike = useCallback(async () => {
+    try {
+      const res = await apiClient.delete<LikeResponse>(`/v1/articles/${articleId}/likes`)
+      setState(res)
+      return res
+    } catch (err) {
+      const apiError = err instanceof ApiError ? err : new ApiError("Failed to unlike", 0)
+      setError(apiError)
+      toast({
+        title: "エラー",
+        description: apiError.message,
+        variant: "destructive",
+      })
+      throw apiError
+    }
+  }, [articleId, toast])
+
+  return { state, loading, error, like, unlike }
 }
