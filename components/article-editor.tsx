@@ -24,10 +24,10 @@ export function ArticleEditor({ article, mode }: ArticleEditorProps) {
   const [selectedTags, setSelectedTags] = useState<Tag[]>(article?.tags || [])
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [isSaving, setIsSaving] = useState(false)
-
   const createArticle = useCreateArticle()
   const updateArticle = useUpdateArticle()
   const addTagToArticle = useAddTagToArticle()
+
 
   // Validation
   const validateForm = () => {
@@ -72,17 +72,16 @@ export function ArticleEditor({ article, mode }: ArticleEditorProps) {
       }
 
       // Add tags to article
-      const currentTagIds = article?.tags.map((t) => t.id) || []
-      const newTagIds = selectedTags.map((t) => t.id)
-      const tagsToAdd = newTagIds.filter((id) => !currentTagIds.includes(id))
+      const currentIds = Array.isArray(article?.tags) ? article!.tags.map(t => String(t.id)) : []
+    const addIds = selectedTags.map(t => String(t.id)).filter(id => !currentIds.includes(id))
 
-      for (const tagId of tagsToAdd) {
-        try {
-          await addTagToArticle(savedArticle.id, tagId)
-        } catch (error) {
-          console.error("Failed to add tag:", error)
-        }
+    for (const tagId of addIds) {
+      try {
+        await addTagToArticle(String(savedArticle.id), String(tagId))
+      } catch (error) {
+        console.error("Failed to add tag:", error)
       }
+    }
 
       // Navigate to article or continue editing
       if (isPublished) {

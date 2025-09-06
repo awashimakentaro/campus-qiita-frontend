@@ -1,22 +1,21 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
-import { Skeleton } from "@/components/ui/skeleton"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { RefreshCw } from "lucide-react"
 import { ArticleCard } from "./article-card"
 import { ArticleSearch } from "./article-search"
 import { useArticles } from "@/lib/api-hooks"
-import type { ArticleFilters } from "@/lib/api-types"
+import type { Article, ArticleFilters } from "@/lib/api-types"
 
 export function ArticleFeed() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  // Get initial values from URL params
+  // URL → 初期状態
   const initialQuery = searchParams.get("query") || ""
   const initialTags = searchParams.get("tag")?.split(",").filter(Boolean) || []
   const initialSort = (searchParams.get("sort") as "popular" | "recent") || "popular"
@@ -24,42 +23,47 @@ export function ArticleFeed() {
   const [searchQuery, setSearchQuery] = useState(initialQuery)
   const [selectedTags, setSelectedTags] = useState<string[]>(initialTags)
   const [sortBy, setSortBy] = useState<"popular" | "recent">(initialSort)
-  const [page, setPage] = useState(1)
 
-  // Build filters for API call
+  // バックエンドはページネーション未対応のため page/limit は渡さない
   const filters: ArticleFilters = {
     query: searchQuery || undefined,
     tag: selectedTags.length > 0 ? selectedTags : undefined,
+    // sort はAPIでは未使用。クライアント側で並び替える。
     sort: sortBy,
-    page,
-    limit: 10,
     is_published: true,
   }
 
-  const { articles, pagination, loading, error, refetch } = useArticles(filters)
+  const { articles, loading, error, refetch } = useArticles(filters)
 
-  // Update URL when filters change
+  // 並び替え（popular=likes_count降順、recent=作成日時降順）
+  const sortedArticles = useMemo(() => {
+    if (!articles || articles.length === 0) return []
+
+    const toTime = (a: Article) =>
+      new Date((a as any).createdAt ?? (a as any).created_at ?? 0).getTime()
+
+    if (sortBy === "popular") {
+      return [...articles].sort((a, b) => {
+        const la = (a as any).likes_count ?? 0
+        const lb = (b as any).likes_count ?? 0
+        if (lb !== la) return lb - la // いいね多い順
+        return toTime(b) - toTime(a)  // 同数は新しい順
+      })
+    }
+
+    // recent（新着）
+    return [...articles].sort((a, b) => toTime(b) - toTime(a))
+  }, [articles, sortBy])
+
+  // フィルタ変更時にURL更新
   useEffect(() => {
     const params = new URLSearchParams()
-
     if (searchQuery) params.set("query", searchQuery)
     if (selectedTags.length > 0) params.set("tag", selectedTags.join(","))
     if (sortBy !== "popular") params.set("sort", sortBy)
-
     const newUrl = params.toString() ? `/?${params.toString()}` : "/"
     router.replace(newUrl, { scroll: false })
   }, [searchQuery, selectedTags, sortBy, router])
-
-  // Reset page when filters change
-  useEffect(() => {
-    setPage(1)
-  }, [searchQuery, selectedTags, sortBy])
-
-  const handleLoadMore = () => {
-    if (pagination && page < pagination.totalPages) {
-      setPage((prev) => prev + 1)
-    }
-  }
 
   const handleSortChange = (newSort: string) => {
     setSortBy(newSort as "popular" | "recent")
@@ -67,7 +71,7 @@ export function ArticleFeed() {
 
   return (
     <div className="space-y-6">
-      {/* Search and Filters */}
+      {/* 検索・タグフィルタ */}
       <ArticleSearch
         onSearchChange={setSearchQuery}
         onTagsChange={setSelectedTags}
@@ -75,7 +79,7 @@ export function ArticleFeed() {
         selectedTags={selectedTags}
       />
 
-      {/* Sort Tabs */}
+      {/* 並び替えタブ */}
       <Tabs value={sortBy} onValueChange={handleSortChange}>
         <TabsList className="grid w-full max-w-md grid-cols-2">
           <TabsTrigger value="popular">人気</TabsTrigger>
@@ -83,7 +87,7 @@ export function ArticleFeed() {
         </TabsList>
 
         <TabsContent value={sortBy} className="mt-6">
-          {/* Error State */}
+          {/* エラー */}
           {error && (
             <Alert variant="destructive" className="mb-6">
               <AlertDescription className="flex items-center justify-between">
@@ -96,27 +100,25 @@ export function ArticleFeed() {
             </Alert>
           )}
 
-          {/* Loading State */}
-          {loading && page === 1 && (
-            <div className="space-y-6">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="space-y-3">
-                  <Skeleton className="h-6 w-3/4" />
-                  <Skeleton className="h-4 w-full" />
-                  <Skeleton className="h-4 w-2/3" />
-                  <div className="flex gap-2">
-                    <Skeleton className="h-6 w-16" />
-                    <Skeleton className="h-6 w-20" />
-                  </div>
-                </div>
-              ))}
+          {/* ローディング */}
+          {loading && (
+            <div className="flex flex-col items-center justify-center py-12 space-y-4">
+              <RefreshCw className="h-8 w-8 animate-spin text-primary" />
+              <div className="text-center">
+                <p className="text-lg font-medium">記事を検索しています...</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {searchQuery || selectedTags.length > 0
+                    ? "条件に合う記事を探しています"
+                    : "最新の記事を取得しています"}
+                </p>
+              </div>
             </div>
           )}
 
-          {/* Articles List */}
-          {!loading || page > 1 ? (
+          {/* 一覧 */}
+          {!loading && (
             <div className="space-y-6">
-              {(!articles || articles.length === 0) && !loading ? (
+              {(!sortedArticles || sortedArticles.length === 0) ? (
                 <div className="text-center py-12">
                   <p className="text-muted-foreground">
                     {searchQuery || selectedTags.length > 0
@@ -125,37 +127,12 @@ export function ArticleFeed() {
                   </p>
                 </div>
               ) : (
-                <>
-                  {articles?.map((article) => (
-                    <ArticleCard key={article.id} article={article} />
-                  ))}
-
-                  {/* Load More Button */}
-                  {pagination && page < pagination.totalPages && (
-                    <div className="flex justify-center pt-6">
-                      <Button variant="outline" onClick={handleLoadMore} disabled={loading}>
-                        {loading ? (
-                          <>
-                            <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                            読み込み中...
-                          </>
-                        ) : (
-                          "さらに読み込む"
-                        )}
-                      </Button>
-                    </div>
-                  )}
-
-                  {/* Pagination Info */}
-                  {pagination && (
-                    <div className="text-center text-sm text-muted-foreground">
-                      {pagination.total}件中 {Math.min(page * pagination.limit, pagination.total)}件を表示
-                    </div>
-                  )}
-                </>
+                sortedArticles.map((article) => (
+                  <ArticleCard key={article.id} article={article} />
+                ))
               )}
             </div>
-          ) : null}
+          )}
         </TabsContent>
       </Tabs>
     </div>

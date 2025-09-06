@@ -16,7 +16,7 @@ export default function LoginPage() {
 
     try {
       // Redirect to Google OAuth endpoint
-      window.location.href = `${process.env.NEXT_PUBLIC_API_BASE}/auth/google`
+      window.location.href = `${process.env.NEXT_PUBLIC_API_BASE}/auth/login`
     } catch (err) {
       setError("ログインに失敗しました。もう一度お試しください。")
       setIsLoading(false)
