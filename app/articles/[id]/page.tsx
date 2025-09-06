@@ -54,6 +54,12 @@ export default function ArticlePage() {
     )
   }
 
+  // createdAt を安全に取得（snake_case フォールバック）
+  const createdAtRaw =
+    (article as any).createdAt ??
+    (article as any).created_at ??
+    null
+
   // 本文HTML（BEサニタイズ優先、無ければクライアントで生成）
   const safeHtml =
     article.body_html && article.body_html.trim().length > 0
@@ -82,14 +88,19 @@ export default function ArticlePage() {
                   </Avatar>
                   <span className="font-medium">{article.author?.name ?? "Unknown"}</span>
                 </div>
-                <div className="flex items-center gap-1">
-                  <Calendar className="h-4 w-4" />
-                  <span>{formatDate(article.createdAt)}</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <Clock className="h-4 w-4" />
-                  <span>{formatRelativeTime(article.createdAt)}</span>
-                </div>
+
+                {createdAtRaw && (
+                  <>
+                    <div className="flex items-center gap-1">
+                      <Calendar className="h-4 w-4" />
+                      <span>{formatDate(String(createdAtRaw))}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Clock className="h-4 w-4" />
+                      <span>{formatRelativeTime(String(createdAtRaw))}</span>
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Tags */}
@@ -115,9 +126,12 @@ export default function ArticlePage() {
             <CardContent className="py-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-4">
-                  <LikeButton articleId={article.id} initialCount={article.likes_count ?? 0} />
+                  <LikeButton
+                    articleId={String(article.id)}            // ← number でも安全
+                    initialCount={article.likes_count ?? 0}
+                  />
                 </div>
-                <ReportDialog articleId={article.id} articleTitle={article.title} />
+                <ReportDialog articleId={String(article.id)} articleTitle={article.title} />
               </div>
             </CardContent>
           </Card>
@@ -136,7 +150,8 @@ export default function ArticlePage() {
         <Separator className="my-8" />
 
         {/* Comments Section */}
-        <CommentSection articleId={String(article.id)} />      </main>
+        <CommentSection articleId={String(article.id)} />
+      </main>
     </div>
   )
 }
