@@ -1,6 +1,6 @@
 "use client"
-//実際にapiclient.getのように呼び出してreact hookとしてフロントで扱えるようにする部分
-import { useState, useEffect, useCallback ,useMemo } from "react"
+// 実際に apiClient.get のように呼び出して React Hook としてフロントで扱えるようにする部分
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { apiClient, ApiError } from "./api-client"
 import type {
   Article,
@@ -15,12 +15,29 @@ import type {
 } from "./api-types"
 import { useToast } from "@/hooks/use-toast"
 
+// 並び替えヘルパー（popular=likes_count降順 / recent=作成日時降順）
+function sortArticles(items: Article[], sort?: "popular" | "recent") {
+  const arr = [...items]
+  if (sort === "popular") {
+    arr.sort((a, b) => {
+      const la = a.likes_count ?? 0
+      const lb = b.likes_count ?? 0
+      if (lb !== la) return lb - la
+      // 同数なら新しい順
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    })
+  } else {
+    // recent（デフォルト）= 新しい順
+    arr.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+  }
+  return arr
+}
+
 export function useArticle(id?: string) {
   const [article, setArticle] = useState<Article | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<ApiError | null>(null)
 
-  // id が変わるたびに取得（undefined のときは何もしない）
   useEffect(() => {
     if (!id) return
 
@@ -38,10 +55,11 @@ export function useArticle(id?: string) {
       }
     }
     fetchArticle()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [id])
 
-  // 明示的に再取得したいとき
   const refetch = useCallback(async () => {
     if (!id) return
     const res = await apiClient.get<Article>(`/v1/articles/${id}`)
@@ -71,7 +89,6 @@ export function useApiRequest<T>() {
         const apiError = err instanceof ApiError ? err : new ApiError("Unknown error", 0)
         setError(apiError)
 
-        // Show error toast for user-facing errors
         if (apiError.status >= 400 && apiError.status < 500) {
           toast({
             title: "エラー",
@@ -92,23 +109,20 @@ export function useApiRequest<T>() {
 }
 
 // ---- Articles API hooks（置き換え） ----
-// 先頭インポートに useMemo が入っていることを確認:
-// import { useState, useEffect, useMemo } from "react"
-
 function normalizeFilters(f?: ArticleFilters) {
-  if (!f) return {};
-  const out: Record<string, any> = {};
+  if (!f) return {}
+  const out: Record<string, any> = {}
   for (const [k, v] of Object.entries(f)) {
-    if (v === undefined || v === null) continue;         // undefined/null は落とす
-    if (typeof v === "string" && v.trim() === "") continue; // 空文字は落とす
+    if (v === undefined || v === null) continue // undefined/null は落とす
+    if (typeof v === "string" && v.trim() === "") continue // 空文字は落とす
     if (Array.isArray(v)) {
-      if (v.length === 0) continue;                      // 空配列は落とす
-      out[k] = [...v].map(String).sort();                // 配列はソートして安定化
+      if (v.length === 0) continue // 空配列は落とす
+      out[k] = [...v].map(String).sort() // 配列はソートして安定化
     } else {
-      out[k] = v;
+      out[k] = v
     }
   }
-  return out;
+  return out
 }
 
 export function useArticles(filters?: ArticleFilters) {
@@ -127,7 +141,9 @@ export function useArticles(filters?: ArticleFilters) {
       setError(null)
       try {
         const response = await apiClient.get<Article[]>("/v1/articles", normalized)
-        if (!cancelled) setArticles(Array.isArray(response) ? response : [])
+        const list = Array.isArray(response) ? response : []
+        const sorted = sortArticles(list, (filters as any)?.sort)
+        if (!cancelled) setArticles(sorted)
       } catch (err) {
         if (!cancelled) {
           const apiError = err instanceof ApiError ? err : new ApiError("Failed to fetch articles", 0)
@@ -144,11 +160,13 @@ export function useArticles(filters?: ArticleFilters) {
     }
   }, [queryKey]) // ← 正規化済みキーだけに依存
 
-  return { articles, loading, error, refetch: async () => {
-    // 手動リフェッチ用（同じ normalized を使う）
+  const refetch = useCallback(async () => {
     const response = await apiClient.get<Article[]>("/v1/articles", normalized)
-    setArticles(Array.isArray(response) ? response : [])
-  }}
+    const list = Array.isArray(response) ? response : []
+    setArticles(sortArticles(list, (filters as any)?.sort))
+  }, [queryKey, filters])
+
+  return { articles, loading, error, refetch }
 }
 
 export function useCreateArticle() {
@@ -242,14 +260,12 @@ export function useTags(filters?: TagFilters) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<ApiError | null>(null)
 
-  // ✅ filters の安定キー（オブジェクトの新旧差で無限ループしない）
   const queryKey = useMemo(() => JSON.stringify(filters ?? {}), [filters])
 
   const fetchTags = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      // ✅ バックエンドは配列返却を想定
       const response = await apiClient.get<Tag[]>("/v1/tags", filters)
       setTags(Array.isArray(response) ? response : [])
     } catch (err) {
@@ -267,6 +283,7 @@ export function useTags(filters?: TagFilters) {
 
   return { tags, loading, error, refetch: fetchTags }
 }
+
 export function useCreateTag() {
   const { toast } = useToast()
 
@@ -399,7 +416,10 @@ export function useMyArticles(is_published?: boolean) {
       try {
         const params = typeof is_published === "boolean" ? { is_published } : undefined
         const res = await apiClient.get<Article[]>("/v1/articles/me", params)
-        if (!cancelled) setArticles(Array.isArray(res) ? res : [])
+        const list = Array.isArray(res) ? res : []
+        // マイ記事は作成日の新しい順で見やすく
+        const sorted = sortArticles(list, "recent")
+        if (!cancelled) setArticles(sorted)
       } catch (err) {
         if (!cancelled) {
           const apiError = err instanceof ApiError ? err : new ApiError("Failed to fetch my articles", 0)
@@ -411,13 +431,16 @@ export function useMyArticles(is_published?: boolean) {
       }
     }
     fetchMy()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [queryKey])
 
   const refetch = useCallback(async () => {
     const params = typeof is_published === "boolean" ? { is_published } : undefined
     const res = await apiClient.get<Article[]>("/v1/articles/me", params)
-    setArticles(Array.isArray(res) ? res : [])
+    const list = Array.isArray(res) ? res : []
+    setArticles(sortArticles(list, "recent"))
   }, [queryKey])
 
   return { articles, loading, error, refetch }
