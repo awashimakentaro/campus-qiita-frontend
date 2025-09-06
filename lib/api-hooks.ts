@@ -17,23 +17,33 @@ import type {
 import { useToast } from "@/hooks/use-toast"
 
 // 並び替えヘルパー（popular=likes_count降順 / recent=作成日時降順）
+// createdAt が undefined でも安全に扱う
+function getTime(a: Article): number {
+  const raw =
+    (a as any).createdAt ??
+    (a as any).created_at ?? // BE が snake_case の場合
+    null
+  return raw ? new Date(String(raw)).getTime() : 0
+}
+
 function sortArticles(items: Article[], sort?: "popular" | "recent") {
   const arr = [...items]
+
   if (sort === "popular") {
     arr.sort((a, b) => {
-      const la = a.likes_count ?? 0
-      const lb = b.likes_count ?? 0
-      if (lb !== la) return lb - la
+      const la = (a as any).likes_count ?? 0
+      const lb = (b as any).likes_count ?? 0
+      if (lb !== la) return lb - la // いいね多い順
       // 同数なら新しい順
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      return getTime(b) - getTime(a)
     })
   } else {
     // recent（デフォルト）= 新しい順
-    arr.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    arr.sort((a, b) => getTime(b) - getTime(a))
   }
+
   return arr
 }
-
 export function useArticle(id?: string) {
   const [article, setArticle] = useState<Article | null>(null)
   const [loading, setLoading] = useState(false)

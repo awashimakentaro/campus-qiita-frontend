@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
@@ -9,7 +9,7 @@ import { RefreshCw } from "lucide-react"
 import { ArticleCard } from "./article-card"
 import { ArticleSearch } from "./article-search"
 import { useArticles } from "@/lib/api-hooks"
-import type { ArticleFilters } from "@/lib/api-types"
+import type { Article, ArticleFilters } from "@/lib/api-types"
 
 export function ArticleFeed() {
   const router = useRouter()
@@ -28,11 +28,32 @@ export function ArticleFeed() {
   const filters: ArticleFilters = {
     query: searchQuery || undefined,
     tag: selectedTags.length > 0 ? selectedTags : undefined,
+    // sort はAPIでは未使用。クライアント側で並び替える。
     sort: sortBy,
     is_published: true,
   }
 
   const { articles, loading, error, refetch } = useArticles(filters)
+
+  // 並び替え（popular=likes_count降順、recent=作成日時降順）
+  const sortedArticles = useMemo(() => {
+    if (!articles || articles.length === 0) return []
+
+    const toTime = (a: Article) =>
+      new Date((a as any).createdAt ?? (a as any).created_at ?? 0).getTime()
+
+    if (sortBy === "popular") {
+      return [...articles].sort((a, b) => {
+        const la = (a as any).likes_count ?? 0
+        const lb = (b as any).likes_count ?? 0
+        if (lb !== la) return lb - la // いいね多い順
+        return toTime(b) - toTime(a)  // 同数は新しい順
+      })
+    }
+
+    // recent（新着）
+    return [...articles].sort((a, b) => toTime(b) - toTime(a))
+  }, [articles, sortBy])
 
   // フィルタ変更時にURL更新
   useEffect(() => {
@@ -97,7 +118,7 @@ export function ArticleFeed() {
           {/* 一覧 */}
           {!loading && (
             <div className="space-y-6">
-              {(!articles || articles.length === 0) ? (
+              {(!sortedArticles || sortedArticles.length === 0) ? (
                 <div className="text-center py-12">
                   <p className="text-muted-foreground">
                     {searchQuery || selectedTags.length > 0
@@ -106,7 +127,9 @@ export function ArticleFeed() {
                   </p>
                 </div>
               ) : (
-                articles.map((article) => <ArticleCard key={article.id} article={article} />)
+                sortedArticles.map((article) => (
+                  <ArticleCard key={article.id} article={article} />
+                ))
               )}
             </div>
           )}
