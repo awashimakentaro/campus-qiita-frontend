@@ -16,7 +16,7 @@ export function AuthGuard({ children }: Props) {
     let cancelled = false
     ;(async () => {
       try {
-        // BEのHttpOnly Cookieは fetch(credentials: 'include') で送られるe
+        // BEのHttpOnly Cookieは fetch(credentials: 'include') で送られる
         await apiClient.get("/auth/me")
         if (!cancelled) setStatus("ok")
       } catch {
