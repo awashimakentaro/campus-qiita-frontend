@@ -3,6 +3,8 @@
 import type React from "react"
 import { createContext, useContext, useEffect, useState } from "react"
 import { apiClient } from "@/lib/api-client"
+import { getAuth, signInWithPopup, GoogleAuthProvider } from "firebase/auth"
+import { app } from "@/lib/firebase"
 
 interface User {
   id: string
@@ -24,42 +26,48 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+  const auth = getAuth(app)
 
   const refreshUser = async () => {
     try {
-      // apiClient経由に変更（BASE/CORS/credentialsは内部で統一）
       const me = await apiClient.get<User>("/auth/me")
       setUser(me)
-    } catch {
+    } catch (err) {
+      console.error("refreshUser error:", err)
       setUser(null)
     } finally {
       setLoading(false)
     }
   }
 
-  const login = () => {
-    // BEの /auth/login に直接リダイレクト（現在URLを戻り先に）
-    const base = (process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000").replace(/\/+$/, "")
-    const redirect = typeof window !== "undefined" ? window.location.href : "/"
-    window.location.href = `${base}/auth/login?redirect=${encodeURIComponent(redirect)}`
+  const login = async () => {
+    try {
+      const provider = new GoogleAuthProvider()
+      const result = await signInWithPopup(auth, provider)
+      const idToken = await result.user.getIdToken()
+      console.log("✅ Firebase ID Token:", idToken)
+
+      // BE に渡して Cookie を発行してもらう
+      await apiClient.post("/auth/firebase-login", { idToken })
+
+      // Cookie 発行済みなので /auth/me が成功するはず
+      await refreshUser()
+    } catch (err) {
+      console.error("Login failed:", err)
+    }
   }
 
   const logout = async () => {
     try {
-      // まだBEに /auth/logout が無いならこの呼び出しは失敗してもOK
-      await apiClient.post("/auth/logout")
-    } catch {
-      // noop
+      await auth.signOut()
+      await apiClient.post("/auth/logout") // Cookie を消す
     } finally {
       setUser(null)
-      // ログインへ（BEのログインに飛ばすほうが確実）
-      login()
     }
   }
 
   useEffect(() => {
     refreshUser()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return (

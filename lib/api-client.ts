@@ -1,5 +1,6 @@
-// ここは実際にapiとやりとりをするところ
-//実際にfetchを叩いてapi凸苦心をするクラス
+// lib/api-client.ts
+// 実際に API とやりとりをするクライアント。
+// ★ 変更点: Firebase の ID トークンを Authorization ヘッダに自動付与。
 
 export interface ApiResponse<T = any> {
   data?: T
@@ -35,62 +36,91 @@ class ApiClient {
     this.baseUrl = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000"
   }
 
-  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-    const url = `${this.baseUrl}${endpoint}`
-  
-    const config: RequestInit = {
-      credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-        ...options.headers,
-      },
-      ...options,
-    }
-  
+  /** クライアント環境なら Firebase の ID トークンを取得して返す */
+  private async getIdTokenIfAvailable(): Promise<string | undefined> {
+    if (typeof window === "undefined") return undefined
     try {
-      const response = await fetch(url, config)
-  
-      if (!response.ok) {
-        let errorMessage = `HTTP ${response.status}`
-        let errorCode: string | undefined
-  
-        try {
-          const errorData = await response.json()
-          errorMessage = errorData.message || errorData.error || errorMessage
-          errorCode = errorData.code
-        } catch {
-          errorMessage = response.statusText || errorMessage
-        }
-  
-        throw new ApiError(errorMessage, response.status, errorCode)
-      }
-  
-      // ✅ 204 No Content は即 return
-      if (response.status === 204) {
-        return {} as T
-      }
-  
-      // ✅ 空ボディ安全：テキストで読んで中身があれば JSON に
-      const contentType = response.headers.get("content-type") || ""
-      const text = await response.text()
-      if (!text) {
-        return {} as T
-      }
-      if (contentType.includes("application/json")) {
-        return JSON.parse(text) as T
-      }
-  
-      // JSON以外は空オブジェクト返す（用途に応じて拡張可）
-      return {} as T
-    } catch (error) {
-      if (error instanceof ApiError) {
-        throw error
-      }
-      throw new ApiError(error instanceof Error ? error.message : "Network error occurred", 0)
+      const { getAuth } = await import("firebase/auth")
+      const auth = getAuth()
+      const user = auth.currentUser
+      if (!user) return undefined
+      return await user.getIdToken()
+    } catch {
+      // Firebase 未初期化 or 取得失敗時は無視
+      return undefined
     }
   }
 
-  // GET request
+  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  const url = `${this.baseUrl}${endpoint}`
+
+  // Firebase ID トークン（あれば）
+  const idToken = await this.getIdTokenIfAvailable()
+
+  // ← ここがポイント：Headers で正規化
+  const headers = new Headers(options.headers as HeadersInit | undefined)
+  if (!headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json")
+  }
+  if (idToken) {
+    headers.set("Authorization", `Bearer ${idToken}`)
+  }
+
+  const config: RequestInit = {
+    // options を最後に展開しないと上書きされる可能性があるので注意
+    method: options.method ?? "GET",
+    credentials: "include",
+    headers, // 正規化済み
+    body: options.body,
+    // 他に必要なら options のプロパティをここで拾う
+    cache: options.cache,
+    mode: options.mode,
+    redirect: options.redirect,
+    referrer: options.referrer,
+    referrerPolicy: options.referrerPolicy,
+    keepalive: options.keepalive,
+    integrity: options.integrity,
+    signal: options.signal,
+    window: (options as any).window,
+  }
+
+  try {
+    const response = await fetch(url, config)
+
+    if (!response.ok) {
+      let errorMessage = `HTTP ${response.status}`
+      let errorCode: string | undefined
+
+      try {
+        const errorData = await response.json()
+        errorMessage = errorData.message || errorData.error || errorMessage
+        errorCode = errorData.code
+      } catch {
+        errorMessage = response.statusText || errorMessage
+      }
+
+      throw new ApiError(errorMessage, response.status, errorCode)
+    }
+
+    if (response.status === 204) {
+      return {} as T
+    }
+
+    const contentType = response.headers.get("content-type") || ""
+    const text = await response.text()
+    if (!text) return {} as T
+    if (contentType.includes("application/json")) {
+      return JSON.parse(text) as T
+    }
+    return {} as T
+  } catch (error) {
+    if (error instanceof ApiError) throw error
+    throw new ApiError(error instanceof Error ? error.message : "Network error occurred", 0)
+  }
+}
+
+
+  // GET
   async get<T>(endpoint: string, params?: Record<string, any>): Promise<T> {
     const url = new URL(endpoint, this.baseUrl)
 
@@ -109,7 +139,7 @@ class ApiClient {
     return this.request<T>(url.pathname + url.search)
   }
 
-  // POST request
+  // POST
   async post<T>(endpoint: string, data?: any): Promise<T> {
     return this.request<T>(endpoint, {
       method: "POST",
@@ -117,7 +147,7 @@ class ApiClient {
     })
   }
 
-  // PATCH request
+  // PATCH
   async patch<T>(endpoint: string, data?: any): Promise<T> {
     return this.request<T>(endpoint, {
       method: "PATCH",
@@ -125,7 +155,7 @@ class ApiClient {
     })
   }
 
-  // DELETE request
+  // DELETE
   async delete<T>(endpoint: string): Promise<T> {
     return this.request<T>(endpoint, {
       method: "DELETE",
