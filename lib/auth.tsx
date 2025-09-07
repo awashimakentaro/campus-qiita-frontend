@@ -1,9 +1,10 @@
+// lib/auth.tsx
 "use client"
 
 import type React from "react"
 import { createContext, useContext, useEffect, useState } from "react"
 import { apiClient } from "@/lib/api-client"
-import { getAuth, signInWithPopup, GoogleAuthProvider } from "firebase/auth"
+import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged } from "firebase/auth"
 import { app } from "@/lib/firebase"
 
 interface User {
@@ -16,8 +17,8 @@ interface User {
 interface AuthContextType {
   user: User | null
   loading: boolean
-  login: () => void
-  logout: () => void
+  login: () => Promise<void>
+  logout: () => Promise<void>
   refreshUser: () => Promise<void>
 }
 
@@ -26,48 +27,83 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+
   const auth = getAuth(app)
 
+  // BE のクッキーを使って現在ユーザーを取得
   const refreshUser = async () => {
     try {
-      const me = await apiClient.get<User>("/auth/me")
+      const me = await apiClient.get<User>("/auth/me") // ← Authorization ヘッダ不要（Cookieで認証）
       setUser(me)
-    } catch (err) {
-      console.error("refreshUser error:", err)
+    } catch {
       setUser(null)
     } finally {
       setLoading(false)
     }
   }
 
-  const login = async () => {
+  // Google でログイン → Firebase ID トークンを BE に渡してクッキー発行
+// lib/auth.tsx の login を一時的に差し替え
+const login = async () => {
+  const auth = getAuth(app)
+  const provider = new GoogleAuthProvider()
+  console.log("[login] start")
+
+  try {
+    const result = await signInWithPopup(auth, provider)
+    console.log("[login] signInWithPopup OK", {
+      uid: result.user.uid,
+      email: result.user.email,
+    })
+
+    const idToken = await result.user.getIdToken()
+    console.log("[login] got idToken length:", idToken?.length)
+
+    // BE へ idToken を投げる
     try {
-      const provider = new GoogleAuthProvider()
-      const result = await signInWithPopup(auth, provider)
-      const idToken = await result.user.getIdToken()
-      console.log("✅ Firebase ID Token:", idToken)
-
-      // BE に渡して Cookie を発行してもらう
-      await apiClient.post("/auth/firebase-login", { idToken })
-
-      // Cookie 発行済みなので /auth/me が成功するはず
-      await refreshUser()
-    } catch (err) {
-      console.error("Login failed:", err)
+      const res = await apiClient.post("/auth/firebase-login", { idToken })
+      console.log("[login] POST /auth/firebase-login OK", res)
+    } catch (e) {
+      console.error("[login] POST /auth/firebase-login FAILED", e)
     }
+
+    // BE セッションで /auth/me 取得
+    try {
+      await refreshUser()
+      console.log("[login] refreshUser done")
+    } catch (e) {
+      console.error("[login] refreshUser FAILED", e)
+    }
+  } catch (err) {
+    console.error("[login] signInWithPopup FAILED", err)
   }
+}
 
   const logout = async () => {
     try {
       await auth.signOut()
-      await apiClient.post("/auth/logout") // Cookie を消す
     } finally {
+      // BE のセッションクッキーも削除
+      try {
+        await apiClient.post("/auth/logout")
+      } catch {/* noop */}
       setUser(null)
     }
   }
 
+  // 初回：Firebase セッション変化を拾って BE 側も同期
   useEffect(() => {
-    refreshUser()
+    const unsub = onAuthStateChanged(auth, async (fbUser) => {
+      if (fbUser) {
+        // 既に BE にセッションがある場合は /auth/me が通る
+        await refreshUser()
+      } else {
+        setUser(null)
+        setLoading(false)
+      }
+    })
+    return () => unsub()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return (
