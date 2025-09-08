@@ -51,7 +51,7 @@ export function ArticleActions({ article }: ArticleActionsProps) {
   const handleTogglePublish = async () => {
     setIsToggling(true)
     try {
-      await updateArticle(article.id, {
+      await updateArticle(String(article.id), {
         is_published: !article.is_published,
       })
       // Refresh the page to show updated status
@@ -66,7 +66,7 @@ export function ArticleActions({ article }: ArticleActionsProps) {
   const handleDelete = async () => {
     setIsDeleting(true)
     try {
-      await deleteArticle(article.id)
+      await deleteArticle(String(article.id))
       router.push("/")
     } catch (error) {
       console.error("Failed to delete article:", error)
