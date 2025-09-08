@@ -1,5 +1,5 @@
 "use client"
-// 実際に apiClient.get のように呼び出して React Hook としてフロントで扱えるようにする部分
+// 実際に apiClient.get のように呼び出して React Hook としてフロントで扱えるようにする部分f
 import { useState, useEffect, useCallback, useMemo } from "react"
 import { apiClient, ApiError } from "./api-client"
 import type {
@@ -186,7 +186,7 @@ export function useCreateArticle() {
   return useCallback(
     async (data: CreateArticleRequest): Promise<Article> => {
       try {
-        const article = await apiClient.post<Article>("/v1/articles/", data)
+        const article = await apiClient.post<Article>("/v1/articles", data)
 
         toast({
           title: "成功",
