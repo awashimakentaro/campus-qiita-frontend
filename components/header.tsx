@@ -16,7 +16,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useAuth } from "@/lib/auth"
 
 export function Header() {
-  const { user, logout } = useAuth()
+  const { user, loading, login, logout } = useAuth()
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
@@ -36,15 +36,28 @@ export function Header() {
 
         {/* Navigation */}
         <div className="flex items-center space-x-4">
-          {/* 投稿する：SSR とクライアントで不一致が出ないよう mounted を考慮 */}
-          <Button asChild variant="default" size="sm">
-            <Link href={mounted && user ? "/articles/new" : "/login"}>
+          {/* 投稿する */}
+          <Button
+            asChild
+            variant="default"
+            size="sm"
+            disabled={!mounted || loading}
+          >
+            <Link
+              href={mounted && user ? "/articles/new" : "#"}
+              onClick={(e) => {
+                if (!user) {
+                  e.preventDefault()
+                  void login()
+                }
+              }}
+            >
               <PenSquare className="h-4 w-4 mr-2" />
               投稿する
             </Link>
           </Button>
 
-          {/* マイ記事：マウント後にだけユーザー判定 */}
+          {/* マイ記事 */}
           {mounted && user && (
             <Button asChild variant="default" size="sm">
               <Link href="/my" className="flex items-center">
@@ -54,14 +67,14 @@ export function Header() {
             </Button>
           )}
 
-          {/* アバターメニュー or ログインボタン：マウント後にだけユーザー判定 */}
+          {/* アバターメニュー or ログインボタン */}
           {mounted && user ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-8 w-8 rounded-full">
                   <Avatar className="h-8 w-8">
                     <AvatarImage src={user.avatar || "/placeholder.svg"} alt={user.name} />
-                    <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
+                    <AvatarFallback>{(user.name || "U").charAt(0)}</AvatarFallback>
                   </Avatar>
                 </Button>
               </DropdownMenuTrigger>
@@ -87,8 +100,8 @@ export function Header() {
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
-            <Button asChild variant="outline">
-              <Link href="/login">ログイン</Link>
+            <Button variant="outline" onClick={() => void login()} disabled={!mounted || loading}>
+              Googleでログイン
             </Button>
           )}
         </div>

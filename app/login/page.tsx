@@ -1,3 +1,4 @@
+// app/login/page.tsx
 "use client"
 
 import { useState } from "react"
@@ -5,20 +6,22 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2 } from "lucide-react"
+import { useAuth } from "@/lib/auth"
 
 export default function LoginPage() {
+  const { login } = useAuth()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const handleGoogleLogin = async () => {
     setIsLoading(true)
     setError(null)
-
     try {
-      // Redirect to Google OAuth endpoint
-      window.location.href = `${process.env.NEXT_PUBLIC_API_BASE}/auth/login`
-    } catch (err) {
+      // ✅ Firebase ポップアップ → idToken → /auth/firebase-login → クッキー発行
+      await login()
+    } catch (e) {
       setError("ログインに失敗しました。もう一度お試しください。")
+    } finally {
       setIsLoading(false)
     }
   }
