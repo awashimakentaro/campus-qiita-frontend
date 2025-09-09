@@ -4,7 +4,7 @@
 import type React from "react"
 import { createContext, useContext, useEffect, useState } from "react"
 import { apiClient } from "@/lib/api-client"
-import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged } from "firebase/auth"
+import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged ,signInWithRedirect} from "firebase/auth"
 import { app } from "@/lib/firebase"
 
 interface User {
@@ -117,4 +117,21 @@ export function useAuth() {
   const ctx = useContext(AuthContext)
   if (!ctx) throw new Error("useAuth must be used within an AuthProvider")
   return ctx
+}
+function isMobile() {
+  if (typeof navigator === "undefined") return false
+  return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+}
+
+export async function login() {
+  const auth = getAuth()
+  const provider = new GoogleAuthProvider()
+
+  if (isMobile()) {
+    // ← モバイルはリダイレクト方式に
+    await signInWithRedirect(auth, provider)
+  } else {
+    // デスクトップはポップアップ
+    await signInWithPopup(auth, provider)
+  }
 }
