@@ -186,7 +186,7 @@ export function useCreateArticle() {
   return useCallback(
     async (data: CreateArticleRequest): Promise<Article> => {
       try {
-        const article = await apiClient.post<Article>("/v1/articles", data)
+        const article = await apiClient.post<Article>("/v1/articles/", data)
 
         toast({
           title: "成功",
