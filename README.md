@@ -69,8 +69,8 @@ npm install
 ```
 ### 3. 環境変数を設定
 ```
-#バックエンド API の URL（Railway でデプロイした FastAPI）
-NEXT_PUBLIC_API_BASE=https://campus-qiita-backend-production.up.railway.app
+#バックエンド API の URL（FastAPI）
+NEXT_PUBLIC_API_BASE=http://localhost:8000
 
 # Firebase
 NEXT_PUBLIC_FIREBASE_API_KEY=xxxxxx
