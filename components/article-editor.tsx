@@ -64,7 +64,7 @@ export function ArticleEditor({ article, mode }: ArticleEditorProps) {
           is_published: isPublished,
         })
       } else {
-        savedArticle = await updateArticle(article!.id, {
+        savedArticle = await updateArticle(String(article!.id), {
           title: title.trim(),
           body_md: body.trim(),
           is_published: isPublished,

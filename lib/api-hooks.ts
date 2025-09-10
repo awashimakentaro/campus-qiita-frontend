@@ -277,7 +277,7 @@ export function useTags(filters?: TagFilters) {
     setLoading(true)
     setError(null)
     try {
-      const response = await apiClient.get<Tag[]>("/v1/tags", filters)
+      const response = await apiClient.get<Tag[]>("/v1/tags/", filters)
       setTags(Array.isArray(response) ? response : [])
     } catch (err) {
       const apiError = err instanceof ApiError ? err : new ApiError("Failed to fetch tags", 0)
