@@ -50,25 +50,30 @@ class ApiClient {
   }
 
   /** /api + endpoint を安全に連結し、params があればクエリを付与 */
-  private buildUrl(endpoint: string, params?: Record<string, any>): string {
-    const path = endpoint.startsWith("/") ? endpoint : `/${endpoint}`
-    let url = `${this.basePath}${path}` // 例: /api/v1/articles
+  // lib/api-client.ts の buildUrl を差し替え
+private buildUrl(endpoint: string, params?: Record<string, any>): string {
+  let ep = endpoint.trim();
 
-    if (params && Object.keys(params).length > 0) {
-      const sp = new URLSearchParams()
-      for (const [key, value] of Object.entries(params)) {
-        if (value === undefined || value === null) continue
-        if (Array.isArray(value)) {
-          for (const v of value) sp.append(key, String(v))
-        } else {
-          sp.append(key, String(value))
-        }
-      }
-      const qs = sp.toString()
-      if (qs) url += `?${qs}`
+  // 先頭の /api を渡されても二重にならないように除去
+  if (ep.startsWith('/api/')) ep = ep.slice(4);
+  else if (ep === '/api') ep = '/';
+
+  const path = ep.startsWith('/') ? ep : `/${ep}`;
+  let url = `${this.basePath}${path}`; // this.basePath = '/api'
+
+  if (params && Object.keys(params).length > 0) {
+    const sp = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) {
+      if (v === undefined || v === null) continue;
+      if (Array.isArray(v)) v.forEach((x) => sp.append(k, String(x)));
+      else sp.append(k, String(v));
     }
-    return url
+    const qs = sp.toString();
+    if (qs) url += `?${qs}`;
   }
+  return url;
+}
+
 
   /** 共通のfetchラッパ（Cookie・IDトークン・ヘッダ正規化） */
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
