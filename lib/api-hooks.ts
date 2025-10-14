@@ -151,7 +151,7 @@ export function useArticles(filters?: ArticleFilters) {
       setLoading(true)
       setError(null)
       try {
-        const response = await apiClient.get<Article[]>("/v1/articles/", normalized)
+        const response = await apiClient.get<Article[]>("/v1/articles", normalized)
         const list = Array.isArray(response) ? response : []
         const sorted = sortArticles(list, (filters as any)?.sort)
         if (!cancelled) setArticles(sorted)
@@ -186,7 +186,7 @@ export function useCreateArticle() {
   return useCallback(
     async (data: CreateArticleRequest): Promise<Article> => {
       try {
-        const article = await apiClient.post<Article>("/v1/articles/", data)
+        const article = await apiClient.post<Article>("/v1/articles", data)
 
         toast({
           title: "成功",
