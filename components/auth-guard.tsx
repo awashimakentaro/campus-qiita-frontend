@@ -33,9 +33,10 @@ export function AuthGuard({ children }: Props) {
   }
 
   if (status === "ng") {
-    const loginUrl = `${process.env.NEXT_PUBLIC_API_BASE}/auth/login?redirect=${encodeURIComponent(
+    const loginUrl = `/api/auth/login?redirect=${encodeURIComponent(
       typeof window !== "undefined" ? window.location.origin + pathname : "/",
     )}`
+    
     return (
       <div className="container mx-auto px-4 py-12 space-y-4">
         <p>このページを閲覧するにはログインが必要です。</p>

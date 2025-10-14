@@ -1,6 +1,9 @@
 // lib/api-client.ts
-// 実際に API とやりとりをするクライアント。
-// ★ 変更点: Firebase の ID トークンを Authorization ヘッダに自動付与。
+// フロント（Vercel）→ /api →（rewrite）→ Render(FastAPI) へプロキシする前提。
+// ・BASEは使わず相対URLで統一
+// ・Cookie送受信を常に有効化（credentials: 'include'）
+// ・（任意）FirebaseのIDトークンをAuthorization: Bearer に自動付与
+// ・二重スラ防止 & クエリパラメータ安全組み立て
 
 export interface ApiResponse<T = any> {
   data?: T
@@ -30,138 +33,143 @@ export class ApiError extends Error {
 }
 
 class ApiClient {
-  private baseUrl: string
-
-  constructor() {
-    this.baseUrl = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000"
-  }
+  // すべて /api 配下へ流す（VercelのrewritesでRenderへ中継）
+  private readonly basePath = "/api"
 
   /** クライアント環境なら Firebase の ID トークンを取得して返す */
   private async getIdTokenIfAvailable(): Promise<string | undefined> {
     if (typeof window === "undefined") return undefined
     try {
       const { getAuth } = await import("firebase/auth")
-      const auth = getAuth()
-      const user = auth.currentUser
+      const user = getAuth().currentUser
       if (!user) return undefined
       return await user.getIdToken()
     } catch {
-      // Firebase 未初期化 or 取得失敗時は無視
       return undefined
     }
   }
 
+  /** /api + endpoint を安全に連結し、params があればクエリを付与 */
+  private buildUrl(endpoint: string, params?: Record<string, any>): string {
+    const path = endpoint.startsWith("/") ? endpoint : `/${endpoint}`
+    let url = `${this.basePath}${path}` // 例: /api/v1/articles
+
+    if (params && Object.keys(params).length > 0) {
+      const sp = new URLSearchParams()
+      for (const [key, value] of Object.entries(params)) {
+        if (value === undefined || value === null) continue
+        if (Array.isArray(value)) {
+          for (const v of value) sp.append(key, String(v))
+        } else {
+          sp.append(key, String(value))
+        }
+      }
+      const qs = sp.toString()
+      if (qs) url += `?${qs}`
+    }
+    return url
+  }
+
+  /** 共通のfetchラッパ（Cookie・IDトークン・ヘッダ正規化） */
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  const url = `${this.baseUrl}${endpoint}`
+    const url = this.buildUrl(endpoint)
 
-  // Firebase ID トークン（あれば）
-  const idToken = await this.getIdTokenIfAvailable()
+    // Firebase IDトークン（あれば）
+    const idToken = await this.getIdTokenIfAvailable()
 
-  // ← ここがポイント：Headers で正規化
-  const headers = new Headers(options.headers as HeadersInit | undefined)
-  if (!headers.has("Content-Type")) {
-    headers.set("Content-Type", "application/json")
-  }
-  if (idToken) {
-    headers.set("Authorization", `Bearer ${idToken}`)
-  }
+    // ヘッダ正規化
+    const headers = new Headers(options.headers as HeadersInit | undefined)
 
-  const config: RequestInit = {
-    // options を最後に展開しないと上書きされる可能性があるので注意
-    method: options.method ?? "GET",
-    credentials: "include",
-    headers, // 正規化済み
-    body: options.body,
-    // 他に必要なら options のプロパティをここで拾う
-    cache: options.cache,
-    mode: options.mode,
-    redirect: options.redirect,
-    referrer: options.referrer,
-    referrerPolicy: options.referrerPolicy,
-    keepalive: options.keepalive,
-    integrity: options.integrity,
-    signal: options.signal,
-    window: (options as any).window,
-  }
+    // BodyがJSONなら Content-Type を補完（FormDataなどは自動付与されるので付けない）
+    const isJsonBody =
+      options.body !== undefined &&
+      !(options.body instanceof FormData) &&
+      !(options.body instanceof Blob) &&
+      !(options.body instanceof ArrayBuffer)
 
-  try {
-    const response = await fetch(url, config)
+    if (isJsonBody && !headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json")
+    }
+    if (idToken && !headers.has("Authorization")) {
+      headers.set("Authorization", `Bearer ${idToken}`)
+    }
 
-    if (!response.ok) {
-      let errorMessage = `HTTP ${response.status}`
-      let errorCode: string | undefined
+    const config: RequestInit = {
+      method: options.method ?? "GET",
+      credentials: "include", // ★ 同一オリジンCookie（/api→rewrite）を常に送受信
+      headers,
+      body: options.body,
+      // 必要に応じて他のinitも引き継ぐ
+      cache: options.cache,
+      mode: options.mode,
+      redirect: options.redirect,
+      referrer: options.referrer,
+      referrerPolicy: options.referrerPolicy,
+      keepalive: options.keepalive,
+      integrity: options.integrity,
+      signal: options.signal,
+    }
 
-      try {
-        const errorData = await response.json()
-        errorMessage = errorData.message || errorData.error || errorMessage
-        errorCode = errorData.code
-      } catch {
-        errorMessage = response.statusText || errorMessage
+    try {
+      const res = await fetch(url, config)
+
+      if (!res.ok) {
+        // 可能ならJSONエラーを拾う
+        let message = `HTTP ${res.status}`
+        let code: string | undefined
+        try {
+          const data = await res.json()
+          message = data.message || data.error || message
+          code = data.code
+        } catch {
+          message = res.statusText || message
+        }
+        throw new ApiError(message, res.status, code)
       }
 
-      throw new ApiError(errorMessage, response.status, errorCode)
-    }
+      if (res.status === 204) return {} as T
 
-    if (response.status === 204) {
+      const ct = res.headers.get("content-type") || ""
+      const text = await res.text()
+      if (!text) return {} as T
+      if (ct.includes("application/json")) {
+        return JSON.parse(text) as T
+      }
       return {} as T
+    } catch (err) {
+      if (err instanceof ApiError) throw err
+      const msg = err instanceof Error ? err.message : "Network error occurred"
+      throw new ApiError(msg, 0)
     }
-
-    const contentType = response.headers.get("content-type") || ""
-    const text = await response.text()
-    if (!text) return {} as T
-    if (contentType.includes("application/json")) {
-      return JSON.parse(text) as T
-    }
-    return {} as T
-  } catch (error) {
-    if (error instanceof ApiError) throw error
-    throw new ApiError(error instanceof Error ? error.message : "Network error occurred", 0)
   }
-}
 
+  // ====== Public methods ======
 
-  // GET
   async get<T>(endpoint: string, params?: Record<string, any>): Promise<T> {
-    const url = new URL(endpoint, this.baseUrl)
-
-    if (params) {
-      Object.entries(params).forEach(([key, value]) => {
-        if (value !== undefined && value !== null) {
-          if (Array.isArray(value)) {
-            value.forEach((v) => url.searchParams.append(key, String(v)))
-          } else {
-            url.searchParams.append(key, String(value))
-          }
-        }
-      })
-    }
-
-    return this.request<T>(url.pathname + url.search)
+    const url = this.buildUrl(endpoint, params) // ここでクエリ付与済み
+    // request() は endpointを受け取る設計なので、pathname+search を渡す
+    const u = new URL(url, "http://localhost") // ベースはダミー。pathname+searchを抽出
+    return this.request<T>(u.pathname + u.search)
   }
 
-  // POST
   async post<T>(endpoint: string, data?: any): Promise<T> {
     return this.request<T>(endpoint, {
       method: "POST",
-      body: data ? JSON.stringify(data) : undefined,
+      body: data !== undefined ? JSON.stringify(data) : undefined,
     })
   }
 
-  // PATCH
   async patch<T>(endpoint: string, data?: any): Promise<T> {
     return this.request<T>(endpoint, {
       method: "PATCH",
-      body: data ? JSON.stringify(data) : undefined,
+      body: data !== undefined ? JSON.stringify(data) : undefined,
     })
   }
 
-  // DELETE
   async delete<T>(endpoint: string): Promise<T> {
-    return this.request<T>(endpoint, {
-      method: "DELETE",
-    })
+    return this.request<T>(endpoint, { method: "DELETE" })
   }
 }
 
-// Export singleton instance
+// Singletonで使う
 export const apiClient = new ApiClient()
