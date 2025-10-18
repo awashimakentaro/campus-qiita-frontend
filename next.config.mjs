@@ -9,6 +9,7 @@ const nextConfig = {
       {
         source: '/api/:path*',
         destination: 'https://campus-qiita-backend.onrender.com/:path*',
+        //http://localhost:8000/:path*
       },
     ];
   },

@@ -277,7 +277,7 @@ export function useTags(filters?: TagFilters) {
     setLoading(true)
     setError(null)
     try {
-      const response = await apiClient.get<Tag[]>("/v1/tags/", filters)
+      const response = await apiClient.get<Tag[]>("/v1/tags", filters)
       setTags(Array.isArray(response) ? response : [])
     } catch (err) {
       const apiError = err instanceof ApiError ? err : new ApiError("Failed to fetch tags", 0)
@@ -301,7 +301,7 @@ export function useCreateTag() {
   return useCallback(
     async (data: CreateTagRequest): Promise<Tag> => {
       try {
-        const tag = await apiClient.post<Tag>("/v1/tags/", data)
+        const tag = await apiClient.post<Tag>("/v1/tags", data)
 
         toast({
           title: "成功",
